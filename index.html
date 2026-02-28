@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>HIIT Master v2</title>
+  <title>HIIT Master</title>
   <style>
     :root {
       --bg-color: #121212;
       --text-color: #ffffff;
       --work-red: #d32f2f;
       --rest-green: #388e3c;
-      --accent: #2196f3;
     }
 
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -31,8 +31,6 @@
     /* --- LAUNCHPAD --- */
     #launchpad { align-items: center; justify-content: center; padding: 20px; }
     .d-pad { display: grid; grid-template-columns: 80px 150px 80px; grid-template-rows: 80px 100px 80px; gap: 10px; align-items: center; justify-items: center; }
-
-    /* THE FIX: Re-anchoring the D-Pad */
     .goal-display { grid-column: 2; grid-row: 2; font-size: 90px; font-weight: 800; }
     #north { grid-column: 2; grid-row: 1; }
     #south { grid-column: 2; grid-row: 3; }
@@ -41,7 +39,7 @@
 
     .btn-arrow { background: #333; border: none; color: white; border-radius: 15px; width: 80px; height: 80px; font-size: 32px; cursor: pointer;}
     .btn-arrow:active { background: #555; }
-    .btn-arrow:disabled { opacity: 0.1; }
+    .btn-arrow:disabled { opacity: 0.1; cursor: default; }
     .session-info { margin-top: 20px; font-size: 18px; color: #888; min-height: 1.5em; }
     .start-btn { margin-top: 40px; padding: 25px 80px; font-size: 28px; font-weight: bold; background: var(--rest-green); border: none; color: white; border-radius: 50px; min-width: 220px; cursor: pointer;}
     .start-btn:active { transform: scale(0.95); opacity: 0.8; }
@@ -54,42 +52,22 @@
 
     .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
     .control-btn { padding: 20px; border-radius: 15px; border: none; font-size: 18px; font-weight: bold; color: white; background: rgba(255,255,255,0.15); backdrop-filter: blur(5px); cursor: pointer;}
-
-    /* THE FIX: Moved down slightly to avoid iOS notch, added z-index and padding */
     #ff-btn { position: absolute; top: 40px; right: 20px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.3); padding: 12px 18px; border-radius: 10px; color: white; font-size: 16px; z-index: 100; cursor: pointer;}
     #ff-btn:active { background: rgba(255,255,255,0.2); }
 
-    /* --- LANDSCAPE MODE RESPONSIVENESS --- */
+    /* --- LANDSCAPE MODE --- */
     @media (orientation: landscape) and (max-height: 600px) {
-      /* Launchpad: Side-by-side layout */
-      #launchpad {
-        flex-direction: row;
-        justify-content: space-evenly;
-        padding: 10px;
-      }
-      .d-pad {
-        /* Shrink the D-Pad slightly */
-        grid-template-columns: 60px 100px 60px;
-        grid-template-rows: 60px 80px 60px;
-      }
+      #launchpad { flex-direction: row; justify-content: space-evenly; padding: 10px; }
+      .d-pad { grid-template-columns: 60px 100px 60px; grid-template-rows: 60px 80px 60px; }
       .btn-arrow { width: 60px; height: 60px; font-size: 24px; }
       .goal-display { font-size: 70px; }
+      #launchpad > .start-btn, #launchpad > .session-info, #launchpad > button { margin-top: 10px; }
 
-      /* Group the right-side elements */
-      #launchpad > .start-btn,
-      #launchpad > .session-info,
-      #launchpad > button[onclick="exportCSV()"] {
-        margin-top: 10px;
-      }
-
-      /* Run View: Scale down typography and padding */
       #run-view { padding: 15px 20px; justify-content: center; }
       #ff-btn { top: 15px; right: 20px; padding: 8px 12px; font-size: 14px; }
-
       .run-header { font-size: 18px; margin-bottom: 5px; }
       .main-timer { font-size: 110px; flex-grow: 0; margin: 5px 0; }
       .phase-label { font-size: 24px; margin-bottom: 15px; letter-spacing: 4px; }
-
       .controls { gap: 15px; }
       .control-btn { padding: 12px; font-size: 16px; }
     }
@@ -105,9 +83,9 @@
     <button class="btn-arrow" id="east">▶</button>
     <div class="goal-display" id="goal-val">20</div>
   </div>
-  <div class="session-info" id="session-info">First Session</div>
+  <div class="session-info" id="session-info">New Session</div>
   <button class="start-btn" id="start-btn">START</button>
-  <button onclick="exportCSV()" style="margin-top:20px; background:none; border:none; color:#555; text-decoration:underline;">Export CSV</button>
+  <button onclick="exportCSV()" style="margin-top:20px; background:none; border:none; color:#555; text-decoration:underline; font-size:16px; cursor:pointer;">Export CSV</button>
 </div>
 
 <div id="run-view">
@@ -122,7 +100,18 @@
 </div>
 
 <script>
-  const RESTS = [300, 80, 65, 55, 45, 40, 35, ...Array(8).fill(30)];
+  // --- DATA & CONFIG ---
+  const urlParams = new URLSearchParams(window.location.search);
+
+  // Default sequence
+  let RESTS = [300, 80, 65, 55, 45, 40, 35, ...Array(8).fill(30)];
+
+  // Override via query param
+  if (urlParams.has('rests')) {
+    const parsed = urlParams.get('rests').split(',').map(Number).filter(n => !isNaN(n));
+    if (parsed.length > 0) RESTS = parsed;
+  }
+
   let history = JSON.parse(localStorage.getItem('hiit_history') || '[]');
   let hIdx = -1;
   let workGoal = history.length > 0 ? history[history.length-1].goal : 20;
@@ -131,15 +120,22 @@
   let timeLeft = 0;
   let isPaused = false;
   let isWorkPhase = false;
-  let isCooldown = false; // NEW STATE
+  let isCooldown = false;
   let timer = null;
   let audioCtx = null;
 
+  // UI REFS (The ones that went missing!)
   const goalEl = document.getElementById('goal-val');
   const infoEl = document.getElementById('session-info');
   const startBtn = document.getElementById('start-btn');
+  const ffBtn = document.getElementById('ff-btn');
 
-  // Audio Oscillator
+  // Dev Mode Toggle
+  if (!urlParams.has('show_skip')) {
+    ffBtn.style.display = 'none';
+  }
+
+  // --- AUDIO ---
   const playTone = (freq, len) => {
     if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const osc = audioCtx.createOscillator();
@@ -151,15 +147,17 @@
     osc.start(); osc.stop(audioCtx.currentTime + len);
   };
 
+  // --- UI UPDATES ---
   const updateLaunch = () => {
     if (hIdx === -1) {
       goalEl.innerText = workGoal;
-      infoEl.innerText = "New Session";
+      infoEl.innerText = history.length === 0 ? "First Session" : "New Session";
       document.getElementById('north').disabled = false;
       document.getElementById('south').disabled = false;
     } else {
       goalEl.innerText = history[hIdx].goal;
-      infoEl.innerText = new Date(history[hIdx].date).toLocaleDateString() + " " + new Date(history[hIdx].date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      const d = new Date(history[hIdx].date);
+      infoEl.innerText = d.toLocaleDateString() + " " + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
       document.getElementById('north').disabled = true;
       document.getElementById('south').disabled = true;
     }
@@ -167,6 +165,7 @@
     document.getElementById('west').disabled = (history.length === 0 || hIdx === 0);
   };
 
+  // --- LISTENERS ---
   document.getElementById('north').onclick = () => { workGoal++; updateLaunch(); };
   document.getElementById('south').onclick = () => { if(workGoal > 5) workGoal--; updateLaunch(); };
   document.getElementById('west').onclick = () => { if(hIdx === -1) hIdx = history.length-1; else hIdx--; updateLaunch(); };
@@ -194,13 +193,17 @@
     document.getElementById('launchpad').style.display = 'none';
     document.getElementById('run-view').style.display = 'flex';
 
-    history.push({ date: new Date().toISOString(), goal: workGoal });
+    history.push({
+      date: new Date().toISOString(),
+      goal: workGoal,
+      rests: RESTS
+    });
     localStorage.setItem('hiit_history', JSON.stringify(history));
 
     curCycle = 0;
     isWorkPhase = false; // Always start in a Rest (Warmup)
     isCooldown = false;
-    timeLeft = RESTS[0]; // Exactly 300s
+    timeLeft = RESTS[0];
 
     try { await navigator.wakeLock.request('screen'); } catch(e){}
     timer = setInterval(tick, 1000);
@@ -220,7 +223,6 @@
 
   const nextPhase = () => {
     if (isCooldown) {
-      // If the cooldown timer just finished, we are totally done.
       clearInterval(timer);
       alert("Workout Complete!");
       location.reload();
@@ -228,19 +230,17 @@
     }
 
     if (!isWorkPhase) {
-      // Moving from REST (or Warmup) -> WORK
+      // REST -> WORK
       isWorkPhase = true;
       timeLeft = workGoal;
     } else {
-      // Moving from WORK -> Next phase
+      // WORK -> REST/COOLDOWN
       curCycle++;
       isWorkPhase = false;
 
       if (curCycle < RESTS.length) {
-        // Start the next Rest (Offset by the work goal)
         timeLeft = (RESTS[curCycle] + 30) - workGoal;
       } else {
-        // No more cycles left! Go straight to Cooldown.
         isCooldown = true;
         timeLeft = 180; // 3 minutes strictly
       }
@@ -249,8 +249,6 @@
 
   const render = () => {
     const isWarmup = (curCycle === 0 && !isWorkPhase);
-
-    // Background is red ONLY during work, everything else (Warmup, Rest, Cooldown) is green
     const bg = (isWorkPhase) ? 'var(--work-red)' : 'var(--rest-green)';
     document.getElementById('run-view').style.backgroundColor = bg;
 
@@ -261,7 +259,6 @@
 
     document.getElementById('phase-name').innerText = phaseNameStr;
 
-    // Keep the cycle count pegged at max during the cooldown
     let displayCycle = curCycle + 1;
     if (isCooldown) displayCycle = RESTS.length;
     document.getElementById('cycle-count').innerText = `${displayCycle} / ${RESTS.length}`;
@@ -271,13 +268,13 @@
     document.getElementById('timer-display').innerText = `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  document.getElementById('ff-btn').onclick = () => {
+  ffBtn.onclick = () => {
     if (timeLeft > 3) {
       timeLeft = 3;
-      render(); // Instantly update screen to 0:03
+      render();
     } else {
       timeLeft = 0;
-      tick(); // Force the transition and the big buzzer immediately
+      tick();
     }
   };
 
@@ -289,7 +286,11 @@
   document.getElementById('return-btn').onclick = () => { if(confirm("Quit?")) location.reload(); };
 
   const exportCSV = () => {
-    let csv = "Date,Goal\n" + history.map(h => `${h.date},${h.goal}`).join("\n");
+    let csv = "Date,Goal,Rests\n" + history.map(h => {
+      const restsStr = h.rests ? `"${h.rests.join(',')}"` : "[]";
+      return `${h.date},${h.goal},${restsStr}`;
+    }).join("\n");
+
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
