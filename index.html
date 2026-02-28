@@ -142,7 +142,8 @@
     const g = audioCtx.createGain();
     osc.connect(g); g.connect(audioCtx.destination);
     osc.frequency.value = freq;
-    g.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    // TURNED UP TO 100% VOLUME (Changed 0.1 to 1.0)
+    g.gain.setValueAtTime(1.0, audioCtx.currentTime);
     g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + len);
     osc.start(); osc.stop(audioCtx.currentTime + len);
   };
