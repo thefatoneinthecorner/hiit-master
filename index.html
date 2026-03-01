@@ -102,9 +102,10 @@
 <script>
   // --- DATA & CONFIG ---
   const urlParams = new URLSearchParams(window.location.search);
+  const beepFrequency = 880;
 
   // Default sequence
-  let RESTS = [300, 890, 75, 60, 45, 35, ...Array(7).fill(30)];
+  let RESTS = [300, 90, 75, 60, 45, 35, ...Array(7).fill(30)];
 
   // Override via query param
   if (urlParams.has('rests')) {
@@ -177,17 +178,17 @@
     let countdown = 3;
     startBtn.innerText = countdown;
     const prep = setInterval(() => {
-      playTone(440, 0.1);
+      playTone(beepFrequency, 0.1);
       countdown--;
       if(countdown > 0) startBtn.innerText = countdown;
       else {
         clearInterval(prep);
-        playTone(880, 0.5);
+        playTone(beepFrequency, 0.5);
         startBtn.innerText = "START";
         initRun();
       }
     }, 1000);
-    playTone(440, 0.1);
+    playTone(beepFrequency, 0.1);
   };
 
   const initRun = async () => {
@@ -214,9 +215,9 @@
   const tick = () => {
     if(isPaused) return;
     timeLeft--;
-    if(timeLeft <= 3 && timeLeft > 0) playTone(440, 0.1);
+    if(timeLeft <= 3 && timeLeft > 0) playTone(beepFrequency, 0.1);
     if(timeLeft <= 0) {
-      playTone(880, 0.4);
+      playTone(beepFrequency, 0.4);
       nextPhase();
     }
     render();
@@ -225,8 +226,8 @@
   const nextPhase = () => {
     if (isCooldown) {
       clearInterval(timer);
-      alert("Workout Complete!");
-      location.reload();
+      document.getElementById('phase-name').innerText = "Workout Complete!";
+      // location.reload();
       return;
     }
 
@@ -243,7 +244,7 @@
         timeLeft = (RESTS[curCycle] + 30) - workGoal;
       } else {
         isCooldown = true;
-        timeLeft = 180; // 3 minutes strictly
+        timeLeft = (180 + 30) - workGoal;
       }
     }
   };
@@ -255,14 +256,13 @@
 
     let phaseNameStr = "REST";
     if (isWarmup) phaseNameStr = "WARMUP";
-    else if (isCooldown) phaseNameStr = "COOLDOWN";
+    else if (isCooldown) phaseNameStr = timeLeft === 0 ? "Workout Complete!" : "COOLDOWN";
     else if (isWorkPhase) phaseNameStr = "WORK";
 
     document.getElementById('phase-name').innerText = phaseNameStr;
 
     let displayCycle = curCycle + 1;
-    if (isCooldown) displayCycle = RESTS.length;
-    document.getElementById('cycle-count').innerText = `${displayCycle} / ${RESTS.length}`;
+    document.getElementById('cycle-count').innerText = isCooldown ? ' ' : `${displayCycle} / ${RESTS.length}`;
 
     const m = Math.floor(timeLeft / 60);
     const s = timeLeft % 60;
