@@ -102,7 +102,8 @@
 <script>
   // --- DATA & CONFIG ---
   const urlParams = new URLSearchParams(window.location.search);
-  const beepFrequency = 880;
+  // const beepFrequency = 880;
+  const beepFrequency = 1760;
 
   // Default sequence
   let RESTS = [300, 90, 75, 60, 45, 35, ...Array(7).fill(30)];
@@ -123,7 +124,6 @@
   let isWorkPhase = false;
   let isCooldown = false;
   let timer = null;
-  let audioCtx = null;
 
   // UI REFS (The ones that went missing!)
   const goalEl = document.getElementById('goal-val');
@@ -135,18 +135,58 @@
   if (!urlParams.has('show_skip')) {
     ffBtn.style.display = 'none';
   }
+  let audioCtx, master;
 
-  // --- AUDIO ---
+  const ensureAudio = () => {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    // One-time master chain: compressor as a soft limiter
+    if (!master) {
+      const comp = audioCtx.createDynamicsCompressor();
+      comp.threshold.value = -18;
+      comp.knee.value = 24;
+      comp.ratio.value = 12;
+      comp.attack.value = 0.003;
+      comp.release.value = 0.08;
+
+      const gain = audioCtx.createGain();
+      gain.gain.value = 0.9; // final trim
+
+      comp.connect(gain);
+      gain.connect(audioCtx.destination);
+      master = comp; // connect tones into compressor
+    }
+  };
+
+
   const playTone = (freq, len) => {
-    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    ensureAudio();
+
+    const t0 = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     const g = audioCtx.createGain();
-    osc.connect(g); g.connect(audioCtx.destination);
-    osc.frequency.value = freq;
-    // TURNED UP TO 100% VOLUME (Changed 0.1 to 1.0)
-    g.gain.setValueAtTime(1.0, audioCtx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + len);
-    osc.start(); osc.stop(audioCtx.currentTime + len);
+
+    osc.type = "triangle";     // "sine" sounds soft; "square" is harsher
+    osc.frequency.setValueAtTime(freq, t0);
+
+    osc.connect(g);
+    g.connect(master);
+
+    // Envelope (no clicks, more perceived loudness)
+    const peak = 0.18;                 // try 0.12–0.25
+    const attack = 0.004;              // 4 ms
+    const release = Math.min(0.06, len / 2);
+
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(peak, t0 + attack);
+
+    // Hold most of the beep, then release
+    const holdEnd = t0 + Math.max(attack + 0.01, len - release);
+    g.gain.setValueAtTime(peak, holdEnd);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+
+    osc.start(t0);
+    osc.stop(t0 + len + 0.02); // tiny extra so release completes cleanly
   };
 
   // --- UI UPDATES ---
