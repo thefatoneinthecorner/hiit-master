@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>HIIT Pro: Final Build</title>
+  <style>
+    :root { --bg: #050505; --card: #121212; --peak: #ff4757; --trough: #2ed573; --delta: #54a0ff; --text: #eee; }
+    body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; margin: 0; overflow: hidden; }
+    .container { display: flex; flex-direction: column; height: 100vh; padding: 1rem; box-sizing: border-box; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .live-hr { font-size: 5rem; font-weight: 800; tabular-nums: true; }
+    .controls { display: flex; flex-direction: column; gap: 8px; }
+    .comp-nav { background: #222; padding: 5px 10px; border-radius: 5px; font-size: 0.8rem; display: flex; align-items: center; gap: 10px; }
+    .grid-wrapper { overflow-x: auto; background: var(--card); border-radius: 12px; border: 1px solid #333; flex-grow: 1; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 1400px; }
+    th, td { border: 1px solid #222; text-align: center; padding: 10px 5px; }
+    .label-col { width: 120px; font-weight: bold; background: #1a1a1a; position: sticky; left: 0; z-index: 10; font-size: 0.7rem; color: #888; text-align: left; padding-left: 10px; }
+    .peak-val { color: var(--peak); font-size: 1.8rem; font-weight: bold; }
+    .trough-val { color: var(--trough); font-size: 1.8rem; font-weight: bold; }
+    .is-active { background: rgba(255, 255, 255, 0.08); outline: 2px solid #555; }
+    button { background: var(--trough); color: black; border: none; padding: 0.8rem 1.5rem; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    .btn-mock { background: #444; color: white; font-size: 0.7rem; }
+    .btn-export { background: var(--delta); color: white; font-size: 0.7rem; }
+  </style>
+</head>
+<body>
+<div id="app"></div>
+
+<script type="module">
+  import { h, render, useState, useEffect, useRef, html } from 'https://unpkg.com/htm/preact/standalone.module.js';
+
+  const DB_NAME = "HIITAnalyzerDB";
+  const initDB = () => new Promise((res) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains("sessions")) db.createObjectStore("sessions", { keyPath: "date" });
+      if (!db.objectStoreNames.contains("raw_data")) db.createObjectStore("raw_data", { keyPath: "id", autoIncrement: true });
+    };
+    req.onsuccess = () => res(req.result);
+  });
+
+  function App() {
+    const [db, setDb] = useState(null);
+    const [hr, setHr] = useState(0);
+    const [currentIdx, setCurrentIdx] = useState(-1);
+    const [phase, setPhase] = useState('PEAK');
+    const [intervals, setIntervals] = useState(Array.from({ length: 13 }, () => ({ peak: 0, trough: 0 })));
+    const [connected, setConnected] = useState(false);
+    const [isMock, setIsMock] = useState(false);
+    const [history, setHistory] = useState([]);
+    const [compIdx, setCompIdx] = useState(-1);
+
+    const sessionDate = useRef(new Date().toLocaleString()).current;
+    const stateRef = useRef({ hr, currentIdx, phase, intervals });
+    const warmupHistory = useRef([]);
+    const startTime = useRef(Date.now());
+    const mockInterval = useRef(null);
+
+    useEffect(() => {
+      initDB().then(async d => {
+        setDb(d);
+        const tx = d.transaction("sessions", "readonly");
+        tx.objectStore("sessions").getAll().onsuccess = (e) => {
+          const logs = e.target.result.filter(s => s.type !== 'mock').sort((a, b) => b.date.localeCompare(a.date));
+          setHistory(logs);
+          if (logs.length > 0) setCompIdx(0);
+        };
+      });
+    }, []);
+
+    useEffect(() => {
+      stateRef.current = { hr, currentIdx, phase, intervals };
+      if (db && connected) {
+        const tx = db.transaction("sessions", "readwrite");
+        tx.objectStore("sessions").put({ date: sessionDate, intervals, type: isMock ? 'mock' : 'live' });
+      }
+    }, [hr, currentIdx, phase, intervals, connected]);
+
+    const processHR = (newBpm) => {
+      const { currentIdx: idx, phase: curPhase, intervals: curIntervals } = stateRef.current;
+      setHr(newBpm);
+
+      if (db) {
+        const tx = db.transaction("raw_data", "readwrite");
+        tx.objectStore("raw_data").add({ date: sessionDate, timestamp: Date.now(), bpm: newBpm });
+      }
+
+      if (idx === -1) {
+        if (!isMock && (Date.now() - startTime.current < 60000)) return;
+        warmupHistory.current = [...warmupHistory.current, newBpm].slice(-20);
+        const avg = warmupHistory.current.reduce((a, b) => a + b, 0) / warmupHistory.current.length;
+        if (newBpm > avg + 12 || isMock) setCurrentIdx(0);
+        return;
+      }
+
+      if (idx < 13) {
+        const nextData = [...curIntervals];
+        const data = nextData[idx];
+        const thresh = (idx <= 3) ? 10 : 4;
+
+        if (curPhase === 'PEAK') {
+          if (newBpm > data.peak) data.peak = newBpm;
+          if (newBpm <= data.peak - thresh) {
+            setPhase('TROUGH');
+            data.trough = newBpm;
+          }
+        } else {
+          if (newBpm < data.trough || data.trough === 0) data.trough = newBpm;
+          if (newBpm >= data.trough + thresh) {
+            if (idx < 12) {
+              setCurrentIdx(idx + 1);
+              setPhase('PEAK');
+              nextData[idx + 1].peak = newBpm;
+            }
+          }
+        }
+        setIntervals(nextData);
+      }
+    };
+
+    const connectHR = async () => {
+      try {
+        const device = await navigator.bluetooth.requestDevice({ filters: [{ services: ['heart_rate'] }] });
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService('heart_rate');
+        const char = await service.getCharacteristic('heart_rate_measurement');
+        if ('wakeLock' in navigator) await navigator.wakeLock.request('screen').catch(() => {});
+        await char.startNotifications();
+        char.addEventListener('characteristicvaluechanged', e => processHR(e.target.value.getUint8(1)));
+        setConnected(true);
+        setIsMock(false);
+        startTime.current = Date.now();
+      } catch (err) { alert("Bluetooth Connection Failed: " + err.message); }
+    };
+
+    const runMock = () => {
+      setIsMock(true);
+      setConnected(true);
+      let mockVal = 130;
+      let dir = 1;
+      mockInterval.current = setInterval(() => {
+        mockVal += (dir * 3);
+        if (mockVal > 185) dir = -1;
+        if (mockVal < 125) dir = 1;
+        processHR(mockVal);
+      }, 500);
+    };
+
+    const completeMock = () => {
+      if (mockInterval.current) clearInterval(mockInterval.current);
+      setIntervals(intervals.map(() => ({ peak: 175 + Math.floor(Math.random()*10), trough: 130 + Math.floor(Math.random()*10) })));
+      setCurrentIdx(12);
+      setPhase('DONE');
+    };
+
+    const exportCSV = async () => {
+      const tx = db.transaction("raw_data", "readonly");
+      const store = tx.objectStore("raw_data");
+      const rows = ["Timestamp,BPM"];
+      store.openCursor().onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          if (cursor.value.date === sessionDate) rows.push(`${cursor.value.timestamp},${cursor.value.bpm}`);
+          cursor.continue();
+        } else {
+          const blob = new Blob([rows.join("\n")], { type: 'text/csv' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = `HIIT_${sessionDate.replace(/\W/g, '_')}.csv`;
+          a.click();
+        }
+      };
+    };
+
+    const getDelta = (d) => (d.peak && d.trough) ? d.peak - d.trough : null;
+    const comp = history[compIdx];
+
+    return html`
+                <div class="container">
+                    <div class="header">
+                        <div class="controls">
+                            ${!connected ? html`
+                                <div style="display:flex; gap:10px">
+                                    <button onclick=${connectHR}>CONNECT HR</button>
+                                    <button class="btn-mock" onclick=${runMock}>MOCK TEST</button>
+                                </div>
+                            ` : html`
+                                <div class="status">${isMock ? '[MOCK] ' : ''}INT ${currentIdx+1} • ${phase}</div>
+                                <div style="display:flex; gap:10px">
+                                    <button class="btn-export" onclick=${exportCSV}>EXPORT CSV</button>
+                                    ${isMock && phase !== 'DONE' && html`<button class="btn-mock" onclick=${completeMock}>FAST FINISH</button>`}
+                                </div>
+                            `}
+                            <div class="comp-nav">
+                                <span onclick=${() => setCompIdx(Math.min(history.length-1, compIdx+1))}>◀</span>
+                                <span>VS: ${comp ? comp.date : 'NO HISTORY'}</span>
+                                <span onclick=${() => setCompIdx(Math.max(0, compIdx-1))}>▶</span>
+                            </div>
+                        </div>
+                        <div class="live-hr">${hr || '--'}</div>
+                    </div>
+                    <div class="grid-wrapper">
+                        <table>
+                            <thead><tr><th class="label-col">INTERVAL</th>${Array.from({length:13}).map((_,i)=>html`<th>${i+1}</th>`)}</tr></thead>
+                            <tbody>
+                                <tr><td class="label-col">PEAK</td>${intervals.map((d,i)=>html`<td class="peak-val ${currentIdx===i && phase==='PEAK'?'is-active':''}">${d.peak||'--'}</td>`)}</tr>
+                                <tr><td class="label-col">TROUGH</td>${intervals.map((d,i)=>html`<td class="trough-val ${currentIdx===i && phase==='TROUGH'?'is-active':''}">${d.trough||'--'}</td>`)}</tr>
+                                <tr style="background:#0f172a"><td class="label-col">DELTA</td>${intervals.map(d=>html`<td style="color:var(--delta); font-size:1.2rem">${getDelta(d)||'--'}</td>`)}</tr>
+                                <tr style="background:#1a1a1a"><td class="label-col">VS PREV</td>${intervals.map((d,i)=>{
+      const cd = getDelta(d), pd = comp ? getDelta(comp.intervals[i]) : null, diff = (cd && pd) ? cd - pd : null;
+      return html`<td style="color:${diff>0?'#2ed573':diff<0?'#ff4757':'#888'}">${diff!==null?(diff>0?'+'+diff:diff):'--'}</td>`
+    })}</tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+  }
+  render(html`<${App} />`, document.getElementById('app'));
+</script>
+</body>
+</html>
