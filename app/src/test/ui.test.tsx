@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import { act } from 'preact/test-utils';
 import { describe, expect, it } from 'vitest';
 import { WorkoutScreen } from '../ui/screens/WorkoutScreen';
 import type { HeartRateMonitor, HeartRateMonitorCallbacks } from '../infrastructure/bluetooth/monitor';
@@ -89,6 +90,14 @@ class FakeHeartRateMonitor implements HeartRateMonitor {
     await this.callbacks.onDisconnected();
   }
 
+  async emitHeartRateSample(bpm: number): Promise<void> {
+    await this.callbacks.onHeartRateSample(bpm);
+  }
+
+  async forceDisconnect(): Promise<void> {
+    await this.callbacks.onDisconnected();
+  }
+
   async dispose(): Promise<void> {}
 }
 
@@ -128,5 +137,48 @@ describe('WorkoutScreen', () => {
 
     expect(await screen.findByText('The session is live. Timer state, current BPM, live round deltas, and previous-session comparison are being driven from the session controller.')).toBeTruthy();
     expect((await screen.findAllByText('running')).length).toBeGreaterThan(0);
+  });
+
+  it('renders a broken live trace when heart-rate coverage drops mid-session', async () => {
+    const storage = createStorage({ id: 'app_settings', lastWorkDurationSec: 35 });
+    let nowMs = Date.parse('2026-03-30T12:00:00.000Z');
+    let monitor: FakeHeartRateMonitor | null = null;
+
+    render(
+      <WorkoutScreen
+        storageFactory={async () => storage}
+        monitorFactory={(callbacks) => {
+          monitor = new FakeHeartRateMonitor(callbacks);
+          return monitor;
+        }}
+        now={() => nowMs}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect Heart-Rate Monitor' }));
+    const startButton = await screen.findByRole('button', { name: 'Start Session' });
+
+    await waitFor(() => {
+      expect(startButton.hasAttribute('disabled')).toBe(false);
+    });
+
+    fireEvent.click(startButton);
+    expect(monitor).not.toBeNull();
+
+    await act(async () => {
+      nowMs += 301_000;
+      await monitor!.emitHeartRateSample(142);
+      nowMs += 4_000;
+      await monitor!.emitHeartRateSample(148);
+      nowMs += 1_000;
+      await monitor!.forceDisconnect();
+      nowMs += 6_000;
+      await monitor!.emitHeartRateSample(132);
+    });
+
+    await waitFor(() => {
+      const chart = document.querySelector('.comparison-chart');
+      expect(chart?.querySelectorAll('polyline').length).toBeGreaterThan(1);
+    });
   });
 });

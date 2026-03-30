@@ -50,6 +50,7 @@ export class WorkoutSessionController {
     return {
       controllerStatus: this.controllerStatus,
       sessionId: this.activeSession?.sessionId ?? null,
+      sessionStartedAtMs: this.activeSession?.startedAtMs ?? null,
       workDurationSec: this.activeSession?.workDurationSec ?? null,
       elapsedSec: this.activeSession?.elapsedSec ?? 0,
       currentPhaseType: this.activeSession?.currentPhaseType ?? null,
@@ -63,7 +64,8 @@ export class WorkoutSessionController {
       currentBpm: this.activeSession?.currentBpm ?? null,
       previousComparisonSessionId: this.previousComparisonSessionId,
       workoutPlan: this.activeSession?.workoutPlan ?? null,
-      currentIntervalStats
+      currentIntervalStats,
+      currentHeartRateSamples: this.activeSession === null ? [] : [...this.activeSession.samples]
     };
   }
 

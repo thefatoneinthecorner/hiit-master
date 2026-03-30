@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { WorkoutSessionController } from '../../application/session/controller';
 import type { WorkoutSessionControllerState } from '../../application/session/types';
 import { createDemoComparisonFixture, isDemoComparisonEnabled, type DemoComparisonFixture } from '../../app/demoComparison';
+import type { HeartRateSample } from '../../domain/analysis/types';
 import { createComparisonRounds } from '../../domain/comparison/select';
 import type { ComparisonRound } from '../../domain/comparison/types';
 import { DEFAULT_WORK_DURATION_SEC, MAX_WORK_DURATION_SEC, MIN_WORK_DURATION_SEC, ROUNDS_PLANNED } from '../../domain/workout/constants';
@@ -20,6 +21,7 @@ import type { WorkoutPlan } from '../../domain/workout/types';
 const INITIAL_CONTROLLER_STATE: WorkoutSessionControllerState = {
   controllerStatus: 'idle',
   sessionId: null,
+  sessionStartedAtMs: null,
   workDurationSec: null,
   elapsedSec: 0,
   currentPhaseType: null,
@@ -33,7 +35,8 @@ const INITIAL_CONTROLLER_STATE: WorkoutSessionControllerState = {
   currentBpm: null,
   previousComparisonSessionId: null,
   workoutPlan: null,
-  currentIntervalStats: []
+  currentIntervalStats: [],
+  currentHeartRateSamples: []
 };
 
 const PHASE_LABELS: Record<PhaseType, string> = {
@@ -355,6 +358,7 @@ export function WorkoutScreen({
   const phaseClassName = controllerState.currentPhaseType === null ? 'phase--idle' : 'phase--' + controllerState.currentPhaseType;
   const statusCopy = getStatusCopy(controllerState);
   const effectiveCurrentIntervalStats = demoFixture === null ? controllerState.currentIntervalStats : demoFixture.currentStats;
+  const effectiveCurrentHeartRateSamples = demoFixture === null ? controllerState.currentHeartRateSamples : demoFixture.currentSamples;
   const effectivePreviousIntervalStats = demoFixture === null ? previousIntervalStats : demoFixture.previousStats;
   const previousComparisonSession = historySessions.find((session) => session.id === controllerState.previousComparisonSessionId) ?? null;
   const currentChartTiming = demoFixture === null
@@ -366,14 +370,28 @@ export function WorkoutScreen({
   const comparisonRounds = demoFixture === null
     ? createComparisonRounds(effectiveCurrentIntervalStats, effectivePreviousIntervalStats)
     : demoFixture.comparisonRounds;
-  const comparisonChart = createComparisonChartModel(effectiveCurrentIntervalStats, effectivePreviousIntervalStats, currentChartTiming, previousChartTiming);
+  const comparisonChart = createComparisonChartModel(
+    effectiveCurrentHeartRateSamples,
+    demoFixture === null ? controllerState.sessionStartedAtMs : Date.parse(demoFixture.currentSession.startedAt),
+    effectiveCurrentIntervalStats,
+    effectivePreviousIntervalStats,
+    currentChartTiming,
+    previousChartTiming
+  );
   const maxComparisonDiff = getMaxComparisonDiff(comparisonRounds);
   const comparisonStripBars = comparisonChart === null
     ? []
     : createComparisonStripBars(comparisonRounds, currentChartTiming, comparisonChart.maxElapsedSec, maxComparisonDiff);
   const scrubDetail = comparisonChart === null
     ? null
-    : createComparisonScrubDetail(scrubXPercent, comparisonRounds, effectiveCurrentIntervalStats, effectivePreviousIntervalStats, currentChartTiming, comparisonChart.maxElapsedSec);
+    : createComparisonScrubDetail(
+      scrubXPercent,
+      comparisonRounds,
+      effectiveCurrentHeartRateSamples,
+      demoFixture === null ? controllerState.sessionStartedAtMs : Date.parse(demoFixture.currentSession.startedAt),
+      currentChartTiming,
+      comparisonChart.maxElapsedSec
+    );
   const isScrubberEnabled = controllerState.controllerStatus !== 'running';
   const selectedHistorySession = historySessions.find((session) => session.id === selectedHistorySessionId) ?? null;
 
@@ -453,6 +471,7 @@ export function WorkoutScreen({
         {scrubDetail !== null && isScrubberEnabled ? <div className="hero-scrub-card">
           <strong>{scrubDetail.timeLabel}</strong>
           <span>Round {scrubDetail.roundNumber}</span>
+          <span>BPM {formatDeltaValue(scrubDetail.currentBpm)}</span>
           <span>Current {formatDeltaValue(scrubDetail.currentDelta)} / Previous {formatDeltaValue(scrubDetail.previousDelta)}</span>
           <span className={getDiffClassName({ roundIndex: scrubDetail.roundIndex, currentDelta: scrubDetail.currentDelta, previousDelta: scrubDetail.previousDelta, diffDelta: scrubDetail.diffDelta })}>{formatSignedDelta(scrubDetail.diffDelta)}</span>
         </div> : null}
@@ -561,7 +580,9 @@ export function WorkoutScreen({
                       {comparisonChart.guides.map((guide) => (
                         <line key={guide.label} x1="0" y1={guide.y} x2="100" y2={guide.y} stroke="rgba(255, 255, 255, 0.1)" strokeWidth="0.4" />
                       ))}
-                      {comparisonChart.currentPathPoints !== null ? <polyline points={comparisonChart.currentPathPoints} fill="none" stroke="#fff8de" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /> : null}
+                      {comparisonChart.currentPathSegments.map((segment, index) => (
+                        <polyline key={String(index)} points={segment} fill="none" stroke="#fff8de" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                      ))}
                       {scrubDetail !== null && isScrubberEnabled ? <line x1={scrubDetail.xPercent} y1="0" x2={scrubDetail.xPercent} y2="100" stroke="rgba(120, 184, 255, 0.95)" strokeWidth="0.8" /> : null}
                     </svg>
                     <div className="comparison-rounds" aria-hidden="true">
@@ -856,6 +877,16 @@ interface ChartIntervalStat {
   troughBpm: number | null;
 }
 
+interface ChartBpmSample {
+  elapsedSec: number;
+  bpm: number;
+}
+
+interface ChartSampleGap {
+  elapsedSec: number;
+  bpm: null;
+}
+
 interface ComparisonChartGuide {
   y: number;
   label: string;
@@ -874,8 +905,7 @@ interface ComparisonChartLabel {
 }
 
 interface ComparisonChartModel {
-  currentPathPoints: string | null;
-  previousPathPoints: string | null;
+  currentPathSegments: string[];
   guides: ComparisonChartGuide[];
   timeLabels: ComparisonChartLabel[];
   maxElapsedSec: number;
@@ -886,12 +916,15 @@ interface ComparisonScrubDetail {
   roundNumber: number;
   xPercent: number;
   timeLabel: string;
+  currentBpm: number | null;
   currentDelta: number | null;
   previousDelta: number | null;
   diffDelta: number | null;
 }
 
 function createComparisonChartModel(
+  currentSamples: HeartRateSample[],
+  currentSessionStartedAtMs: number | null,
   currentStats: ChartIntervalStat[],
   previousStats: ChartIntervalStat[],
   currentTiming: ComparisonChartTiming | null,
@@ -899,9 +932,18 @@ function createComparisonChartModel(
 ): ComparisonChartModel | null {
   const sortedCurrentStats = [...currentStats].sort((left, right) => left.roundIndex - right.roundIndex);
   const sortedPreviousStats = [...previousStats].sort((left, right) => left.roundIndex - right.roundIndex);
-  const allValues = [...sortedCurrentStats, ...sortedPreviousStats].flatMap((stat) => [stat.peakBpm, stat.troughBpm]).filter(isNumber);
+  const currentTotalSec = getChartDurationSec(currentTiming, sortedCurrentStats);
+  const previousTotalSec = getChartDurationSec(previousTiming, sortedPreviousStats);
+  const maxElapsedSec = Math.max(currentTotalSec, previousTotalSec);
+  const liveSeries = normalizeChartSamples(currentSamples, currentSessionStartedAtMs, maxElapsedSec);
+  const liveSamples = liveSeries.filter(isChartBpmSample);
+  const allValues = [
+    ...liveSamples.map((sample) => sample.bpm),
+    ...sortedCurrentStats.flatMap((stat) => [stat.peakBpm, stat.troughBpm]),
+    ...sortedPreviousStats.flatMap((stat) => [stat.peakBpm, stat.troughBpm])
+  ].filter(isNumber);
 
-  if (allValues.length === 0) {
+  if (allValues.length === 0 || maxElapsedSec === 0) {
     return null;
   }
 
@@ -913,56 +955,86 @@ function createComparisonChartModel(
   const yStep = getNiceBpmStep((rawMax - rawMin) / 3);
   const chartMin = Math.floor(rawMin / yStep) * yStep;
   const chartMax = Math.ceil(rawMax / yStep) * yStep;
-  const currentTotalSec = getChartDurationSec(currentTiming, sortedCurrentStats);
-  const previousTotalSec = getChartDurationSec(previousTiming, sortedPreviousStats);
-  const maxElapsedSec = Math.max(currentTotalSec, previousTotalSec);
-
-  if (maxElapsedSec === 0) {
-    return null;
-  }
 
   return {
-    currentPathPoints: buildSawtoothPoints(sortedCurrentStats, currentTiming, chartMin, chartMax, maxElapsedSec),
-    previousPathPoints: buildSawtoothPoints(sortedPreviousStats, previousTiming, chartMin, chartMax, maxElapsedSec),
+    currentPathSegments: buildLivePathSegments(liveSeries, chartMin, chartMax, maxElapsedSec),
     guides: buildChartGuides(chartMin, chartMax),
     timeLabels: buildTimeLabels(maxElapsedSec),
     maxElapsedSec
   };
 }
 
-function buildSawtoothPoints(
-  stats: ChartIntervalStat[],
-  timing: ComparisonChartTiming | null,
+function normalizeChartSamples(
+  samples: HeartRateSample[],
+  sessionStartedAtMs: number | null,
+  maxElapsedSec: number
+): Array<ChartBpmSample | ChartSampleGap> {
+  if (sessionStartedAtMs === null) {
+    return [];
+  }
+
+  const normalized: Array<ChartBpmSample | ChartSampleGap> = [];
+
+  for (const sample of samples) {
+    const elapsedSec = Math.max(0, (sample.timestampMs - sessionStartedAtMs) / 1000);
+    if (elapsedSec > maxElapsedSec + 1) {
+      continue;
+    }
+
+    if (sample.isMissing || sample.bpm === null) {
+      const previousPoint = normalized.at(-1);
+      if (previousPoint === undefined || isChartSampleGap(previousPoint)) {
+        continue;
+      }
+
+      normalized.push({ elapsedSec, bpm: null });
+      continue;
+    }
+
+    const previousPoint = normalized.at(-1);
+    if (previousPoint !== undefined && isChartBpmSample(previousPoint) && Math.abs(previousPoint.elapsedSec - elapsedSec) < 0.05) {
+      previousPoint.bpm = sample.bpm;
+      continue;
+    }
+
+    normalized.push({ elapsedSec, bpm: sample.bpm });
+  }
+
+  return normalized;
+}
+
+function buildLivePathSegments(
+  samples: Array<ChartBpmSample | ChartSampleGap>,
   chartMin: number,
   chartMax: number,
   maxElapsedSec: number
-): string | null {
-  if (timing === null || maxElapsedSec === 0) {
-    return null;
+): string[] {
+  if (samples.length === 0 || maxElapsedSec === 0) {
+    return [];
   }
 
-  const sortedStats = [...stats].sort((left, right) => left.roundIndex - right.roundIndex);
-  const points = [];
+  const segments: string[] = [];
+  let currentSegment: string[] = [];
 
-  for (const stat of sortedStats) {
-    const roundStartSec = getRoundStartSec(stat.roundIndex, timing);
-
-    if (stat.troughBpm !== null) {
-      points.push({
-        x: getElapsedX(roundStartSec, maxElapsedSec),
-        y: getChartY(stat.troughBpm, chartMin, chartMax)
-      });
+  for (const sample of samples) {
+    if (sample.bpm === null) {
+      if (currentSegment.length > 0) {
+        segments.push(currentSegment.join(' '));
+        currentSegment = [];
+      }
+      continue;
     }
 
-    if (stat.peakBpm !== null) {
-      points.push({
-        x: getElapsedX(roundStartSec + timing.workDurationSec, maxElapsedSec),
-        y: getChartY(stat.peakBpm, chartMin, chartMax)
-      });
-    }
+    const x = getElapsedX(sample.elapsedSec, maxElapsedSec);
+    const y = getChartY(sample.bpm, chartMin, chartMax);
+    currentSegment.push(String(x) + ',' + String(y));
   }
 
-  return points.length === 0 ? null : points.map((point) => String(point.x) + ',' + String(point.y)).join(' ');
+  if (currentSegment.length > 0) {
+    segments.push(currentSegment.join(' '));
+  }
+
+  return segments;
 }
 
 function buildChartGuides(chartMin: number, chartMax: number): ComparisonChartGuide[] {
@@ -1045,8 +1117,8 @@ function getElapsedX(elapsedSec: number, maxElapsedSec: number): number {
 function createComparisonScrubDetail(
   scrubXPercent: number | null,
   rounds: ComparisonRound[],
-  currentStats: ChartIntervalStat[],
-  previousStats: ChartIntervalStat[],
+  currentSamples: HeartRateSample[],
+  currentSessionStartedAtMs: number | null,
   timing: ComparisonChartTiming | null,
   maxElapsedSec: number
 ): ComparisonScrubDetail | null {
@@ -1055,6 +1127,8 @@ function createComparisonScrubDetail(
   }
 
   const scrubElapsedSec = (scrubXPercent / 100) * maxElapsedSec;
+  const liveSamples = normalizeChartSamples(currentSamples, currentSessionStartedAtMs, maxElapsedSec).filter(isChartBpmSample);
+  const nearestSample = getNearestChartSample(liveSamples, scrubElapsedSec);
   let nearestRound = rounds[0]!;
   let nearestMidpointSec = getRoundStartSec(nearestRound.roundIndex, timing) + (timing.workDurationSec / 2);
   let nearestDistance = Math.abs(nearestMidpointSec - scrubElapsedSec);
@@ -1069,20 +1143,42 @@ function createComparisonScrubDetail(
     }
   }
 
+  const focusElapsedSec = nearestSample?.elapsedSec ?? nearestMidpointSec;
+
   return {
     roundIndex: nearestRound.roundIndex,
     roundNumber: nearestRound.roundIndex + 1,
-    xPercent: getElapsedX(nearestMidpointSec, maxElapsedSec),
-    timeLabel: formatElapsedClock(nearestMidpointSec),
+    xPercent: getElapsedX(focusElapsedSec, maxElapsedSec),
+    timeLabel: formatElapsedClock(focusElapsedSec),
+    currentBpm: nearestSample?.bpm ?? null,
     currentDelta: nearestRound.currentDelta,
     previousDelta: nearestRound.previousDelta,
     diffDelta: nearestRound.diffDelta
   };
 }
 
+function getNearestChartSample(samples: ChartBpmSample[], scrubElapsedSec: number): ChartBpmSample | null {
+  if (samples.length === 0) {
+    return null;
+  }
+
+  let nearestSample = samples[0]!;
+  let nearestDistance = Math.abs(nearestSample.elapsedSec - scrubElapsedSec);
+
+  for (const sample of samples) {
+    const distance = Math.abs(sample.elapsedSec - scrubElapsedSec);
+    if (distance < nearestDistance) {
+      nearestSample = sample;
+      nearestDistance = distance;
+    }
+  }
+
+  return nearestSample;
+}
+
 function buildTimeLabels(maxElapsedSec: number): ComparisonChartLabel[] {
   const stepSec = getTimeLabelStepSec(maxElapsedSec);
-  const labels = [];
+  const labels: ComparisonChartLabel[] = [];
 
   for (let elapsedSec = 0; elapsedSec <= maxElapsedSec; elapsedSec += stepSec) {
     const xPercent = maxElapsedSec === 0 ? 0 : (elapsedSec / maxElapsedSec) * 100;
@@ -1132,4 +1228,12 @@ function getChartY(value: number, chartMin: number, chartMax: number): number {
 
 function isNumber(value: number | null): value is number {
   return value !== null;
+}
+
+function isChartBpmSample(value: ChartBpmSample | ChartSampleGap): value is ChartBpmSample {
+  return value.bpm !== null;
+}
+
+function isChartSampleGap(value: ChartBpmSample | ChartSampleGap): value is ChartSampleGap {
+  return value.bpm === null;
 }
