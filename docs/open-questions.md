@@ -62,19 +62,25 @@ Heart-rate capture is required for the product's core live feedback and comparis
 
 ### Q4. What is the canonical interval-analysis algorithm?
 
-Status: `Proposed`
+Status: `Decided`
 
 Question:
 
 Should version 1 calculate peaks and troughs from fixed timing windows or from HR trend reversals?
 
-Recommendation:
+Decision:
 
-Use fixed timing windows in version 1.
+Use lag-aware fixed timing windows in version 1.
+
+Canonical rule:
+
+- `peak[r]` is the maximum BPM across work `r` plus the full following recovery phase.
+- `trough[r]` is the minimum BPM across that recovery phase plus the next work phase.
+- The final trough uses a special correction based on the previous round's trough offset into the next work phase, applied to the start of the final recovery/cooldown window.
 
 Reason:
 
-It is deterministic, testable, and reproducible from raw data.
+This preserves deterministic reproducibility while accounting for physiological lag in the heart-rate response.
 
 ### Q5. Does historical correction belong in version 1?
 

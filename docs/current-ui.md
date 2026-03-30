@@ -47,6 +47,7 @@ The live comparison view currently uses:
 
 - a current-session heart-rate chart plotted on a full-session time axis
 - round-derived sawtooth modeling rather than a fully continuous live sample trace
+- lag-aware round analysis where peaks and troughs intentionally span phase boundaries
 - a compact delta strip aligned to the same time scale
 - per-round delta comparison against the immediately previous comparison-eligible session
 - a scrubber that snaps to the nearest work-interval midpoint
@@ -122,7 +123,7 @@ This mode is intended for visualization work, not production session capture.
 
 Important gaps between the current UI and the intended product:
 
-- the heart-rate chart is still modeled from per-round peak and trough summaries rather than plotted from real live sample data
+- the heart-rate chart is still modeled from lag-aware per-round peak and trough summaries rather than plotted from real live sample data
 - scrubber detail is round-based, not sample-based
 - warmup and cooldown graph treatment is still sparse and not yet visually expressive
 - export actions are not yet surfaced in the current workout UI

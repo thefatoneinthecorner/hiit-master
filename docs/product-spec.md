@@ -198,9 +198,20 @@ For each stored session the app should show at minimum:
 
 Version 1 canonical algorithm:
 
-- Per-round `peak` is the maximum BPM within the round's work window.
-- Per-round `trough` is the minimum BPM within the following recovery window.
-- If no samples exist in a window, the metric is empty.
+- Per-round `peak[r]` is the maximum BPM across the work phase of round `r` plus the entire following recovery phase.
+- Per-round `trough[r]` is the minimum BPM across the same following recovery phase plus the next work phase.
+- This intentionally allows overlap between the windows used for adjacent round metrics.
+- This rule exists because heart rate can continue to rise into recovery and can also continue to fall briefly into the next work phase.
+- If no samples exist in the required window, the metric is empty unless a specific edge-case correction applies.
+
+Final-round correction:
+
+- The final round still uses the full last work phase plus the following final recovery/cooldown window for `peak[last]`.
+- The final `trough[last]` has no next work phase, so it uses a special correction.
+- Measure how far into the previous round's next work phase the trough occurred.
+- Apply that same offset from the start of the final recovery/cooldown phase.
+- Estimate the heart rate at that timestamp by interpolation or modest extrapolation if needed, then round to an integer BPM.
+- The goal is a representative final trough value, not exact sensor-level fidelity at a single missing timestamp.
 
 Rules:
 
