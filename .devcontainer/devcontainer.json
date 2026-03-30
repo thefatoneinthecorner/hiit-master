@@ -27,5 +27,6 @@
       }
     }
   },
-  "remoteUser": "root"
+  "remoteUser": "root",
+  "postCreateCommand": "bun install -g @openai/codex"
 }
