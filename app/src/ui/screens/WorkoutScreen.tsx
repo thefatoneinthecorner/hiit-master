@@ -471,7 +471,7 @@ export function WorkoutScreen({
         {scrubDetail !== null && isScrubberEnabled ? <div className="hero-scrub-card">
           <strong>{scrubDetail.timeLabel}</strong>
           <span>Round {scrubDetail.roundNumber}</span>
-          <span>BPM {formatDeltaValue(scrubDetail.currentBpm)}</span>
+          <span>{scrubDetail.currentBpm === null ? 'No HR data' : 'BPM ' + formatDeltaValue(scrubDetail.currentBpm)}</span>
           <span>Current {formatDeltaValue(scrubDetail.currentDelta)} / Previous {formatDeltaValue(scrubDetail.previousDelta)}</span>
           <span className={getDiffClassName({ roundIndex: scrubDetail.roundIndex, currentDelta: scrubDetail.currentDelta, previousDelta: scrubDetail.previousDelta, diffDelta: scrubDetail.diffDelta })}>{formatSignedDelta(scrubDetail.diffDelta)}</span>
         </div> : null}
@@ -1127,8 +1127,10 @@ function createComparisonScrubDetail(
   }
 
   const scrubElapsedSec = (scrubXPercent / 100) * maxElapsedSec;
-  const liveSamples = normalizeChartSamples(currentSamples, currentSessionStartedAtMs, maxElapsedSec).filter(isChartBpmSample);
-  const nearestSample = getNearestChartSample(liveSamples, scrubElapsedSec);
+  const liveSeries = normalizeChartSamples(currentSamples, currentSessionStartedAtMs, maxElapsedSec);
+  const liveSamples = liveSeries.filter(isChartBpmSample);
+  const hasGapAtScrubPosition = isGapAtElapsedSec(liveSeries, scrubElapsedSec);
+  const nearestSample = hasGapAtScrubPosition ? null : getNearestChartSample(liveSamples, scrubElapsedSec);
   let nearestRound = rounds[0]!;
   let nearestMidpointSec = getRoundStartSec(nearestRound.roundIndex, timing) + (timing.workDurationSec / 2);
   let nearestDistance = Math.abs(nearestMidpointSec - scrubElapsedSec);
@@ -1143,18 +1145,33 @@ function createComparisonScrubDetail(
     }
   }
 
-  const focusElapsedSec = nearestSample?.elapsedSec ?? nearestMidpointSec;
-
   return {
     roundIndex: nearestRound.roundIndex,
     roundNumber: nearestRound.roundIndex + 1,
-    xPercent: getElapsedX(focusElapsedSec, maxElapsedSec),
-    timeLabel: formatElapsedClock(focusElapsedSec),
+    xPercent: scrubXPercent,
+    timeLabel: formatElapsedClock(scrubElapsedSec),
     currentBpm: nearestSample?.bpm ?? null,
     currentDelta: nearestRound.currentDelta,
     previousDelta: nearestRound.previousDelta,
     diffDelta: nearestRound.diffDelta
   };
+}
+
+function isGapAtElapsedSec(samples: Array<ChartBpmSample | ChartSampleGap>, scrubElapsedSec: number): boolean {
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = samples[index]!;
+    if (sample.bpm !== null) {
+      continue;
+    }
+
+    const nextSample = samples.slice(index + 1).find(isChartBpmSample) ?? null;
+    const gapEndSec = nextSample?.elapsedSec ?? Number.POSITIVE_INFINITY;
+    if (scrubElapsedSec >= sample.elapsedSec && scrubElapsedSec < gapEndSec) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function getNearestChartSample(samples: ChartBpmSample[], scrubElapsedSec: number): ChartBpmSample | null {

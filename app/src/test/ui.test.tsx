@@ -181,4 +181,63 @@ describe('WorkoutScreen', () => {
       expect(chart?.querySelectorAll('polyline').length).toBeGreaterThan(1);
     });
   });
+
+
+  it('shows no HR data when the scrubber is over a dropout gap', async () => {
+    const storage = createStorage({ id: 'app_settings', lastWorkDurationSec: 35 });
+    let nowMs = Date.parse('2026-03-30T12:00:00.000Z');
+    let monitor: FakeHeartRateMonitor | null = null;
+
+    render(
+      <WorkoutScreen
+        storageFactory={async () => storage}
+        monitorFactory={(callbacks) => {
+          monitor = new FakeHeartRateMonitor(callbacks);
+          return monitor;
+        }}
+        now={() => nowMs}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect Heart-Rate Monitor' }));
+    const startButton = await screen.findByRole('button', { name: 'Start Session' });
+
+    await waitFor(() => {
+      expect(startButton.hasAttribute('disabled')).toBe(false);
+    });
+
+    fireEvent.click(startButton);
+
+    await act(async () => {
+      nowMs += 301_000;
+      await monitor!.emitHeartRateSample(142);
+      nowMs += 4_000;
+      await monitor!.emitHeartRateSample(148);
+      nowMs += 1_000;
+      await monitor!.forceDisconnect();
+      nowMs += 6_000;
+      await monitor!.emitHeartRateSample(132);
+      fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    });
+
+    const interactiveArea = document.querySelector('.comparison-visual--interactive') as HTMLDivElement | null;
+    expect(interactiveArea).not.toBeNull();
+    interactiveArea!.getBoundingClientRect = () => ({
+      x: 0,
+      y: 0,
+      width: 1000,
+      height: 100,
+      top: 0,
+      right: 1000,
+      bottom: 100,
+      left: 0,
+      toJSON() {
+        return {};
+      }
+    });
+
+    fireEvent.pointerDown(interactiveArea!, { clientX: 222, pointerType: 'mouse', buttons: 1 });
+
+    expect(await screen.findByText('No HR data')).toBeTruthy();
+  });
 });
