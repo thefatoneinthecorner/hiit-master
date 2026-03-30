@@ -1,0 +1,137 @@
+:root {
+  color-scheme: dark;
+  --bg: #081019;
+  --bg-accent: #132235;
+  --card: rgba(9, 17, 27, 0.86);
+  --line: rgba(160, 196, 255, 0.14);
+  --text: #ecf4ff;
+  --muted: #8ea4bc;
+  --timer: #fff8de;
+  --work: #d14b3d;
+  --rest: #3d8f67;
+  --compare: #78b8ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top, rgba(120, 184, 255, 0.18), transparent 32%),
+    linear-gradient(180deg, var(--bg-accent), var(--bg));
+  color: var(--text);
+  font-family: "IBM Plex Sans", "Avenir Next", sans-serif;
+}
+
+body {
+  min-height: 100vh;
+}
+
+.screen {
+  min-height: 100vh;
+  padding: 24px;
+  display: grid;
+  gap: 24px;
+}
+
+.hero-card,
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--card);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+}
+
+.hero-card {
+  padding: 28px;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: var(--compare);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.76rem;
+}
+
+.timer {
+  margin: 0;
+  font-size: clamp(4rem, 18vw, 8rem);
+  line-height: 0.92;
+  color: var(--timer);
+  font-variant-numeric: tabular-nums;
+}
+
+.phase {
+  margin: 12px 0 0;
+  color: var(--rest);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+}
+
+.copy {
+  max-width: 42rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.status-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.panel {
+  padding: 20px;
+}
+
+.panel h2 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.panel p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.debug-table {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.debug-table > div {
+  padding: 10px 12px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+
+.debug-table > div:nth-child(4n) {
+  border-right: 0;
+}
+
+@media (min-width: 960px) {
+  .screen {
+    grid-template-columns: minmax(320px, 520px) 1fr;
+    align-items: start;
+  }
+
+  .status-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .panel-wide {
+    grid-column: 1 / -1;
+  }
+}

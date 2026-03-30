@@ -1,0 +1,31 @@
+{
+  "name": "hiit-master",
+  "build": { "dockerfile": "Dockerfile" },
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "mounts": [
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+  ],
+  "forwardPorts": [5173, 8787],
+  // 3. WebStorm-specific customizations
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss"
+      ]
+    },
+    "jetbrains": {
+      "backend": "WebStorm",
+      "plugins": [
+        "com.github.copilot", // Example: Pre-install GitHub Copilot
+        "io.prettier.javascript" // Example: Pre-install Prettier
+      ],
+      "settings": {
+        "editor.formatOnSave": true
+      }
+    }
+  },
+  "remoteUser": "root"
+}
