@@ -13,6 +13,7 @@ export interface DemoComparisonFixture {
   currentStats: IntervalStat[];
   previousStats: IntervalStatRecord[];
   comparisonRounds: ComparisonRound[];
+  currentSession: SessionRecord;
   previousSession: SessionRecord;
 }
 
@@ -30,8 +31,14 @@ export function createDemoComparisonFixture(): DemoComparisonFixture {
     currentStats,
     previousStats,
     comparisonRounds: createComparisonRounds(currentStats, previousStats),
-    previousSession: {
-      id: 'demo-previous-session',
+    currentSession: createDemoSession('demo-current-session', 'Demo current session'),
+    previousSession: createDemoSession('demo-previous-session', 'Demo comparison fixture')
+  };
+}
+
+function createDemoSession(id: string, notes: string): SessionRecord {
+  return {
+      id,
       startedAt: '2026-03-29T12:00:00.000Z',
       completedAt: '2026-03-29T12:23:05.000Z',
       status: 'completed',
@@ -49,9 +56,8 @@ export function createDemoComparisonFixture(): DemoComparisonFixture {
       analysisVersion: 1,
       deviceName: 'Demo Polar H10',
       endedEarly: false,
-      notes: 'Demo comparison fixture'
-    }
-  };
+      notes
+    };
 }
 
 function createIntervalStats(peaks: number[], troughs: number[]): IntervalStat[] {

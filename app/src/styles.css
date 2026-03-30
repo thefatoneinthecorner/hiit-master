@@ -343,4 +343,215 @@ button:disabled {
   .comparison-values {
     grid-template-columns: 1fr;
   }
+
+  .comparison-chart-shell {
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .comparison-rounds {
+    height: 1rem;
+  }
+
+  .comparison-rounds span,
+  .comparison-axis span {
+    font-size: 0.72rem;
+  }
+}
+
+
+
+.comparison-visual {
+  display: grid;
+  gap: 14px;
+}
+
+.comparison-chart-shell {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.comparison-axis {
+  display: grid;
+  grid-template-rows: repeat(4, 1fr);
+  align-content: stretch;
+  padding: 10px 0;
+}
+
+.comparison-axis span {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.comparison-chart-frame {
+  display: grid;
+  gap: 10px;
+}
+
+.comparison-chart {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at top, rgba(120, 184, 255, 0.12), transparent 44%),
+    rgba(8, 16, 25, 0.6);
+}
+
+.comparison-rounds {
+  position: relative;
+  height: 1.2rem;
+}
+
+.comparison-rounds span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+
+.comparison-band {
+  stroke: none;
+}
+
+.comparison-band--current {
+  fill: rgba(255, 248, 222, 0.18);
+}
+
+.comparison-band--previous {
+  fill: rgba(120, 184, 255, 0.14);
+}
+
+.comparison-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.comparison-line--current {
+  stroke: var(--timer);
+}
+
+.comparison-line--current-soft {
+  stroke: rgba(255, 248, 222, 0.58);
+}
+
+.comparison-line--previous {
+  stroke: var(--compare);
+  stroke-dasharray: 3 2;
+}
+
+.comparison-line--previous-soft {
+  stroke: rgba(120, 184, 255, 0.62);
+  stroke-dasharray: 3 2;
+}
+
+.comparison-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+}
+
+.comparison-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.comparison-swatch {
+  width: 28px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.comparison-swatch--current {
+  background: linear-gradient(90deg, rgba(255, 248, 222, 0.4), var(--timer));
+}
+
+.comparison-swatch--previous {
+  background: linear-gradient(90deg, rgba(120, 184, 255, 0.2), var(--compare));
+}
+
+.comparison-bars {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.comparison-bar-row {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(8, 16, 25, 0.45);
+}
+
+.comparison-bar-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.comparison-bar-track {
+  position: relative;
+  height: 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.comparison-bar-zero {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.comparison-bar {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  border-radius: 999px;
+}
+
+.comparison-bar--up {
+  background: linear-gradient(90deg, rgba(140, 240, 178, 0.52), #8cf0b2);
+}
+
+.comparison-bar--down {
+  background: linear-gradient(90deg, rgba(255, 157, 136, 0.9), rgba(255, 157, 136, 0.48));
+}
+
+.comparison-bar--neutral {
+  background: rgba(142, 164, 188, 0.6);
+}
+
+.comparison-bar-values {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.comparison-bar-values small {
+  font-size: 0.82rem;
 }

@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'preact/compat';
 import type { VNode } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { WorkoutSessionController } from '../../application/session/controller';
@@ -14,6 +15,7 @@ import {
 } from '../../infrastructure/bluetooth/monitor';
 import { createStorageRepositories, type StorageRepositories } from '../../infrastructure/storage/db';
 import type { IntervalStatRecord, SessionRecord } from '../../infrastructure/storage/types';
+import type { WorkoutPlan } from '../../domain/workout/types';
 
 const INITIAL_CONTROLLER_STATE: WorkoutSessionControllerState = {
   controllerStatus: 'idle',
@@ -350,10 +352,20 @@ export function WorkoutScreen({
     : Math.min(100, (controllerState.elapsedSec / controllerState.workoutPlan.totalDurationSec) * 100);
   const phaseClassName = controllerState.currentPhaseType === null ? 'phase--idle' : 'phase--' + controllerState.currentPhaseType;
   const statusCopy = getStatusCopy(controllerState);
+  const effectiveCurrentIntervalStats = demoFixture === null ? controllerState.currentIntervalStats : demoFixture.currentStats;
   const effectivePreviousIntervalStats = demoFixture === null ? previousIntervalStats : demoFixture.previousStats;
+  const previousComparisonSession = historySessions.find((session) => session.id === controllerState.previousComparisonSessionId) ?? null;
+  const currentChartTiming = demoFixture === null
+    ? getChartTimingFromWorkoutPlan(controllerState.workoutPlan)
+    : getChartTimingFromSession(demoFixture.currentSession);
+  const previousChartTiming = demoFixture === null
+    ? getChartTimingFromSession(previousComparisonSession)
+    : getChartTimingFromSession(demoFixture.previousSession);
   const comparisonRounds = demoFixture === null
-    ? createComparisonRounds(controllerState.currentIntervalStats, effectivePreviousIntervalStats)
+    ? createComparisonRounds(effectiveCurrentIntervalStats, effectivePreviousIntervalStats)
     : demoFixture.comparisonRounds;
+  const comparisonChart = createComparisonChartModel(effectiveCurrentIntervalStats, effectivePreviousIntervalStats, currentChartTiming, previousChartTiming);
+  const maxComparisonDiff = getMaxComparisonDiff(comparisonRounds);
   const selectedHistorySession = historySessions.find((session) => session.id === selectedHistorySessionId) ?? null;
 
   if (bootstrapStatus === 'loading') {
@@ -469,28 +481,64 @@ export function WorkoutScreen({
 
         <article className="panel panel-wide">
           <h2>Live Comparison</h2>
-          <div className="comparison-grid">
-            {comparisonRounds.length === 0 ? (
-              <p className="panel-copy">Start a session to build live round deltas.</p>
-            ) : comparisonRounds.map((round) => (
-              <div key={round.roundIndex} className="comparison-card">
-                <div className="comparison-header">
-                  <span>Round {round.roundIndex + 1}</span>
-                  <strong className={getDiffClassName(round)}>{formatSignedDelta(round.diffDelta)}</strong>
-                </div>
-                <div className="comparison-values">
-                  <div>
-                    <span>Current</span>
-                    <strong>{formatDeltaValue(round.currentDelta)}</strong>
+          {comparisonChart === null ? (
+            <p className="panel-copy">Start a session to build live round deltas.</p>
+          ) : (
+            <>
+              <div className="comparison-visual">
+                <div className="comparison-chart-shell">
+                  <div className="comparison-axis" aria-hidden="true">
+                    {comparisonChart.guides.map((guide) => (
+                      <span key={guide.label}>{guide.label}</span>
+                    ))}
                   </div>
-                  <div>
-                    <span>Previous</span>
-                    <strong>{formatDeltaValue(round.previousDelta)}</strong>
+                  <div className="comparison-chart-frame">
+                    <svg className="comparison-chart" viewBox="0 0 100 100" role="img" aria-label="Interpolated workout heart-rate range chart for current and previous sessions" preserveAspectRatio="none">
+                      {comparisonChart.guides.map((guide) => (
+                        <line key={guide.label} x1="0" y1={guide.y} x2="100" y2={guide.y} stroke="rgba(255, 255, 255, 0.1)" strokeWidth="0.4" />
+                      ))}
+                      {comparisonChart.previousPathPoints !== null ? <polyline points={comparisonChart.previousPathPoints} fill="none" stroke="#78b8ff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="3 2" /> : null}
+                      {comparisonChart.currentPathPoints !== null ? <polyline points={comparisonChart.currentPathPoints} fill="none" stroke="#fff8de" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /> : null}
+                    </svg>
+                    <div className="comparison-rounds" aria-hidden="true">
+                      {comparisonChart.timeLabels.map((label) => (
+                        <span key={label.label} style={{ left: String(label.xPercent) + '%' }}>{label.label}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="comparison-legend" aria-hidden="true">
+                  <div className="comparison-legend-item">
+                    <span className="comparison-swatch comparison-swatch--current" />
+                    <span>Current range</span>
+                  </div>
+                  <div className="comparison-legend-item">
+                    <span className="comparison-swatch comparison-swatch--previous" />
+                    <span>Previous range</span>
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
+
+              <div className="comparison-bars">
+                {comparisonRounds.map((round) => (
+                  <div key={round.roundIndex} className="comparison-bar-row">
+                    <div className="comparison-bar-heading">
+                      <span>Round {round.roundIndex + 1}</span>
+                      <strong className={getDiffClassName(round)}>{formatSignedDelta(round.diffDelta)}</strong>
+                    </div>
+                    <div className="comparison-bar-track" aria-hidden="true">
+                      <div className="comparison-bar-zero" />
+                      <div className={getDiffBarClassName(round)} style={getDiffBarStyle(round, maxComparisonDiff)} />
+                    </div>
+                    <div className="comparison-bar-values">
+                      <small>Current {formatDeltaValue(round.currentDelta)}</small>
+                      <small>Previous {formatDeltaValue(round.previousDelta)}</small>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
           {demoFixture !== null ? <p className="panel-copy">Demo comparison fixture active via demo_comparison=1.</p> : null}
           {comparisonRounds.length > 0 && effectivePreviousIntervalStats.length === 0 ? (
             <p className="panel-copy">No previous comparison-eligible session exists yet, so current deltas are shown without a baseline.</p>
@@ -628,6 +676,42 @@ function getDiffClassName(round: ComparisonRound): string {
   return 'comparison-diff comparison-diff--neutral';
 }
 
+function getDiffBarClassName(round: ComparisonRound): string {
+  if (round.diffDelta === null || round.diffDelta === 0) {
+    return 'comparison-bar comparison-bar--neutral';
+  }
+
+  if (round.diffDelta > 0) {
+    return 'comparison-bar comparison-bar--up';
+  }
+
+  return 'comparison-bar comparison-bar--down';
+}
+
+function getDiffBarStyle(round: ComparisonRound, maxComparisonDiff: number): CSSProperties {
+  if (round.diffDelta === null || round.diffDelta === 0 || maxComparisonDiff === 0) {
+    return { left: '50%', width: '0%' };
+  }
+
+  const widthPercent = Math.max((Math.abs(round.diffDelta) / maxComparisonDiff) * 50, 2.5);
+  const leftPercent = round.diffDelta > 0 ? 50 : 50 - widthPercent;
+
+  return {
+    left: String(leftPercent) + '%',
+    width: String(widthPercent) + '%'
+  };
+}
+
+function getMaxComparisonDiff(rounds: ComparisonRound[]): number {
+  return rounds.reduce((maxDiff, round) => {
+    if (round.diffDelta === null) {
+      return maxDiff;
+    }
+
+    return Math.max(maxDiff, Math.abs(round.diffDelta));
+  }, 0);
+}
+
 function formatDeltaValue(value: number | null): string {
   return value === null ? '--' : String(value);
 }
@@ -665,4 +749,238 @@ function formatClock(totalSec: number): string {
   const minutes = Math.floor(safeTotalSec / 60);
   const seconds = safeTotalSec % 60;
   return String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+}
+
+interface ChartIntervalStat {
+  roundIndex: number;
+  peakBpm: number | null;
+  troughBpm: number | null;
+}
+
+interface ComparisonChartGuide {
+  y: number;
+  label: string;
+}
+
+interface ComparisonChartTiming {
+  warmupSec: number;
+  workDurationSec: number;
+  restsSec: number[];
+  totalDurationSec: number;
+}
+
+interface ComparisonChartLabel {
+  label: string;
+  xPercent: number;
+}
+
+interface ComparisonChartModel {
+  currentPathPoints: string | null;
+  previousPathPoints: string | null;
+  guides: ComparisonChartGuide[];
+  timeLabels: ComparisonChartLabel[];
+}
+
+function createComparisonChartModel(
+  currentStats: ChartIntervalStat[],
+  previousStats: ChartIntervalStat[],
+  currentTiming: ComparisonChartTiming | null,
+  previousTiming: ComparisonChartTiming | null
+): ComparisonChartModel | null {
+  const sortedCurrentStats = [...currentStats].sort((left, right) => left.roundIndex - right.roundIndex);
+  const sortedPreviousStats = [...previousStats].sort((left, right) => left.roundIndex - right.roundIndex);
+  const allValues = [...sortedCurrentStats, ...sortedPreviousStats].flatMap((stat) => [stat.peakBpm, stat.troughBpm]).filter(isNumber);
+
+  if (allValues.length === 0) {
+    return null;
+  }
+
+  const minValue = Math.min(...allValues);
+  const maxValue = Math.max(...allValues);
+  const rawPadding = Math.max(4, Math.ceil((maxValue - minValue) * 0.12));
+  const rawMin = minValue - rawPadding;
+  const rawMax = maxValue + rawPadding;
+  const yStep = getNiceBpmStep((rawMax - rawMin) / 3);
+  const chartMin = Math.floor(rawMin / yStep) * yStep;
+  const chartMax = Math.ceil(rawMax / yStep) * yStep;
+  const currentTotalSec = getChartDurationSec(currentTiming, sortedCurrentStats);
+  const previousTotalSec = getChartDurationSec(previousTiming, sortedPreviousStats);
+  const maxElapsedSec = Math.max(currentTotalSec, previousTotalSec);
+
+  if (maxElapsedSec === 0) {
+    return null;
+  }
+
+  return {
+    currentPathPoints: buildSawtoothPoints(sortedCurrentStats, currentTiming, chartMin, chartMax, maxElapsedSec),
+    previousPathPoints: buildSawtoothPoints(sortedPreviousStats, previousTiming, chartMin, chartMax, maxElapsedSec),
+    guides: buildChartGuides(chartMin, chartMax),
+    timeLabels: buildTimeLabels(maxElapsedSec)
+  };
+}
+
+function buildSawtoothPoints(
+  stats: ChartIntervalStat[],
+  timing: ComparisonChartTiming | null,
+  chartMin: number,
+  chartMax: number,
+  maxElapsedSec: number
+): string | null {
+  if (timing === null || maxElapsedSec === 0) {
+    return null;
+  }
+
+  const sortedStats = [...stats].sort((left, right) => left.roundIndex - right.roundIndex);
+  const points = [];
+
+  for (const stat of sortedStats) {
+    const roundStartSec = getRoundStartSec(stat.roundIndex, timing);
+
+    if (stat.troughBpm !== null) {
+      points.push({
+        x: getElapsedX(roundStartSec, maxElapsedSec),
+        y: getChartY(stat.troughBpm, chartMin, chartMax)
+      });
+    }
+
+    if (stat.peakBpm !== null) {
+      points.push({
+        x: getElapsedX(roundStartSec + timing.workDurationSec, maxElapsedSec),
+        y: getChartY(stat.peakBpm, chartMin, chartMax)
+      });
+    }
+  }
+
+  return points.length === 0 ? null : points.map((point) => String(point.x) + ',' + String(point.y)).join(' ');
+}
+
+function buildChartGuides(chartMin: number, chartMax: number): ComparisonChartGuide[] {
+  const step = (chartMax - chartMin) / 3;
+  return Array.from({ length: 4 }, (_, index) => {
+    const value = chartMax - (step * index);
+    return {
+      y: getChartY(value, chartMin, chartMax),
+      label: String(Math.round(value))
+    };
+  });
+}
+
+function getNiceBpmStep(rawStep: number): number {
+  const candidates = [5, 10, 15, 20, 25, 30, 40, 50];
+  for (const candidate of candidates) {
+    if (rawStep <= candidate) {
+      return candidate;
+    }
+  }
+
+  return 50;
+}
+
+function getChartTimingFromWorkoutPlan(plan: WorkoutPlan | null): ComparisonChartTiming | null {
+  if (plan === null) {
+    return null;
+  }
+
+  return {
+    warmupSec: plan.warmupSec,
+    workDurationSec: plan.workDurationSec,
+    restsSec: plan.actualRestsSec,
+    totalDurationSec: plan.totalDurationSec
+  };
+}
+
+function getChartTimingFromSession(session: SessionRecord | null): ComparisonChartTiming | null {
+  if (session === null) {
+    return null;
+  }
+
+  return {
+    warmupSec: session.warmupSec,
+    workDurationSec: session.workDurationSec,
+    restsSec: session.actualRestsSec,
+    totalDurationSec: session.totalPlannedDurationSec
+  };
+}
+
+function getRoundStartSec(roundIndex: number, timing: ComparisonChartTiming): number {
+  let elapsedSec = timing.warmupSec;
+
+  for (let index = 0; index < roundIndex; index += 1) {
+    elapsedSec += timing.workDurationSec;
+    elapsedSec += timing.restsSec[index] ?? 0;
+  }
+
+  return elapsedSec;
+}
+
+function getChartDurationSec(timing: ComparisonChartTiming | null, stats: ChartIntervalStat[]): number {
+  if (timing === null) {
+    return 0;
+  }
+
+  if (stats.length === 0) {
+    return timing.totalDurationSec;
+  }
+
+  const lastRoundIndex = Math.max(...stats.map((stat) => stat.roundIndex));
+  const intervalEndSec = getRoundStartSec(lastRoundIndex, timing) + timing.workDurationSec;
+  return Math.max(timing.totalDurationSec, intervalEndSec);
+}
+
+function getElapsedX(elapsedSec: number, maxElapsedSec: number): number {
+  return (elapsedSec / maxElapsedSec) * 100;
+}
+
+function buildTimeLabels(maxElapsedSec: number): ComparisonChartLabel[] {
+  const stepSec = getTimeLabelStepSec(maxElapsedSec);
+  const labels = [];
+
+  for (let elapsedSec = 0; elapsedSec <= maxElapsedSec; elapsedSec += stepSec) {
+    const xPercent = maxElapsedSec === 0 ? 0 : (elapsedSec / maxElapsedSec) * 100;
+    labels.push({
+      label: formatElapsedClock(elapsedSec),
+      xPercent
+    });
+  }
+
+  const lastLabel = labels.at(-1);
+  if (lastLabel === undefined || Math.abs(lastLabel.xPercent - 100) > 0.01) {
+    labels.push({
+      label: formatElapsedClock(maxElapsedSec),
+      xPercent: 100
+    });
+  }
+
+  return labels;
+}
+
+function getTimeLabelStepSec(maxElapsedSec: number): number {
+  const candidates = [60, 120, 180, 300, 600];
+  for (const candidate of candidates) {
+    if (maxElapsedSec / candidate <= 5) {
+      return candidate;
+    }
+  }
+
+  return 600;
+}
+
+function formatElapsedClock(totalSec: number): string {
+  const safeTotalSec = Math.max(0, Math.round(totalSec));
+  const minutes = Math.floor(safeTotalSec / 60);
+  const seconds = safeTotalSec % 60;
+  return String(minutes) + ':' + String(seconds).padStart(2, '0');
+}
+
+function getChartY(value: number, chartMin: number, chartMax: number): number {
+  if (chartMax <= chartMin) {
+    return 46;
+  }
+
+  const ratio = (value - chartMin) / (chartMax - chartMin);
+  return 84 - (ratio * 68);
+}
+
+function isNumber(value: number | null): value is number {
+  return value !== null;
 }
