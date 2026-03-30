@@ -2,6 +2,7 @@ import type { VNode } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { WorkoutSessionController } from '../../application/session/controller';
 import type { WorkoutSessionControllerState } from '../../application/session/types';
+import { createDemoComparisonFixture, isDemoComparisonEnabled, type DemoComparisonFixture } from '../../app/demoComparison';
 import { createComparisonRounds } from '../../domain/comparison/select';
 import type { ComparisonRound } from '../../domain/comparison/types';
 import { DEFAULT_WORK_DURATION_SEC, MAX_WORK_DURATION_SEC, MIN_WORK_DURATION_SEC, ROUNDS_PLANNED } from '../../domain/workout/constants';
@@ -68,6 +69,7 @@ export function WorkoutScreen({
   const [historySessions, setHistorySessions] = useState<SessionRecord[]>([]);
   const [selectedHistorySessionId, setSelectedHistorySessionId] = useState<string | null>(null);
   const [selectedHistoryStats, setSelectedHistoryStats] = useState<IntervalStatRecord[]>([]);
+  const [demoFixture, setDemoFixture] = useState<DemoComparisonFixture | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,6 +82,16 @@ export function WorkoutScreen({
         }
 
         const controller = new WorkoutSessionController({ storage });
+        const demoEnabled = typeof window !== 'undefined' && isDemoComparisonEnabled(window.location.search);
+        if (demoEnabled) {
+          const fixture = createDemoComparisonFixture();
+          await storage.sessions.save(fixture.previousSession);
+          await storage.intervalStats.replaceForSession(fixture.previousSession.id, fixture.previousStats);
+          setDemoFixture(fixture);
+          setSelectedHistorySessionId(fixture.previousSession.id);
+        } else {
+          setDemoFixture(null);
+        }
         const savedSettings = await storage.appSettings.get();
         const monitor = monitorFactory({
           onConnected: (deviceName) => {
@@ -338,7 +350,10 @@ export function WorkoutScreen({
     : Math.min(100, (controllerState.elapsedSec / controllerState.workoutPlan.totalDurationSec) * 100);
   const phaseClassName = controllerState.currentPhaseType === null ? 'phase--idle' : 'phase--' + controllerState.currentPhaseType;
   const statusCopy = getStatusCopy(controllerState);
-  const comparisonRounds = createComparisonRounds(controllerState.currentIntervalStats, previousIntervalStats);
+  const effectivePreviousIntervalStats = demoFixture === null ? previousIntervalStats : demoFixture.previousStats;
+  const comparisonRounds = demoFixture === null
+    ? createComparisonRounds(controllerState.currentIntervalStats, effectivePreviousIntervalStats)
+    : demoFixture.comparisonRounds;
   const selectedHistorySession = historySessions.find((session) => session.id === selectedHistorySessionId) ?? null;
 
   if (bootstrapStatus === 'loading') {
@@ -476,7 +491,8 @@ export function WorkoutScreen({
               </div>
             ))}
           </div>
-          {comparisonRounds.length > 0 && previousIntervalStats.length === 0 ? (
+          {demoFixture !== null ? <p className="panel-copy">Demo comparison fixture active via demo_comparison=1.</p> : null}
+          {comparisonRounds.length > 0 && effectivePreviousIntervalStats.length === 0 ? (
             <p className="panel-copy">No previous comparison-eligible session exists yet, so current deltas are shown without a baseline.</p>
           ) : null}
         </article>
