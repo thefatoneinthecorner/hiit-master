@@ -1,3 +1,4 @@
+import type { IntervalStat } from '../../domain/analysis/types';
 import type { PhaseType, WorkoutPlan } from '../../domain/workout/types';
 import type { SessionStatus } from '../../domain/session/types';
 
@@ -20,4 +21,5 @@ export interface WorkoutSessionControllerState {
   currentBpm: number | null;
   previousComparisonSessionId: string | null;
   workoutPlan: WorkoutPlan | null;
+  currentIntervalStats: IntervalStat[];
 }

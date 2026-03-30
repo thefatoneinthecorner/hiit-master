@@ -43,6 +43,10 @@ export class WorkoutSessionController {
   }
 
   getState(): WorkoutSessionControllerState {
+    const currentIntervalStats = this.activeSession === null
+      ? []
+      : analyzeIntervals(this.activeSession.workoutPlan, this.activeSession.samples, this.activeSession.startedAtMs);
+
     return {
       controllerStatus: this.controllerStatus,
       sessionId: this.activeSession?.sessionId ?? null,
@@ -58,7 +62,8 @@ export class WorkoutSessionController {
       connectedDeviceName: this.connectedDeviceName,
       currentBpm: this.activeSession?.currentBpm ?? null,
       previousComparisonSessionId: this.previousComparisonSessionId,
-      workoutPlan: this.activeSession?.workoutPlan ?? null
+      workoutPlan: this.activeSession?.workoutPlan ?? null,
+      currentIntervalStats
     };
   }
 
