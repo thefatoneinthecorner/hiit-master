@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'preact/compat';
-import type { VNode } from 'preact';
+import type { JSX, VNode } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { WorkoutSessionController } from '../../application/session/controller';
 import type { WorkoutSessionControllerState } from '../../application/session/types';
@@ -57,6 +57,7 @@ export function WorkoutScreen({
   const controllerRef = useRef<WorkoutSessionController | null>(null);
   const monitorRef = useRef<HeartRateMonitor | null>(null);
   const storageRef = useRef<StorageRepositories | null>(null);
+  const comparisonInteractionRef = useRef<HTMLDivElement | null>(null);
   const isTickInFlightRef = useRef(false);
   const [bootstrapStatus, setBootstrapStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
@@ -72,6 +73,7 @@ export function WorkoutScreen({
   const [selectedHistorySessionId, setSelectedHistorySessionId] = useState<string | null>(null);
   const [selectedHistoryStats, setSelectedHistoryStats] = useState<IntervalStatRecord[]>([]);
   const [demoFixture, setDemoFixture] = useState<DemoComparisonFixture | null>(null);
+  const [scrubXPercent, setScrubXPercent] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -369,6 +371,10 @@ export function WorkoutScreen({
   const comparisonStripBars = comparisonChart === null
     ? []
     : createComparisonStripBars(comparisonRounds, currentChartTiming, comparisonChart.maxElapsedSec, maxComparisonDiff);
+  const scrubDetail = comparisonChart === null
+    ? null
+    : createComparisonScrubDetail(scrubXPercent, comparisonRounds, effectiveCurrentIntervalStats, effectivePreviousIntervalStats, currentChartTiming, comparisonChart.maxElapsedSec);
+  const isScrubberEnabled = controllerState.controllerStatus !== 'running';
   const selectedHistorySession = historySessions.find((session) => session.id === selectedHistorySessionId) ?? null;
 
   if (bootstrapStatus === 'loading') {
@@ -382,6 +388,48 @@ export function WorkoutScreen({
         </section>
       </main>
     );
+  }
+
+  function updateScrubberFromClientX(clientX: number): void {
+    if (isScrubberEnabled === false) {
+      return;
+    }
+
+    const container = comparisonInteractionRef.current;
+    if (container === null) {
+      return;
+    }
+
+    const bounds = container.getBoundingClientRect();
+    if (bounds.width <= 0) {
+      return;
+    }
+
+    const rawPercent = ((clientX - bounds.left) / bounds.width) * 100;
+    const clampedPercent = Math.max(0, Math.min(100, rawPercent));
+    setScrubXPercent(clampedPercent);
+  }
+
+  function handleComparisonPointerDown(event: PointerEvent): void {
+    updateScrubberFromClientX(event.clientX);
+  }
+
+  function handleComparisonPointerMove(event: PointerEvent): void {
+    if (event.buttons === 0 && event.pointerType === 'mouse') {
+      return;
+    }
+
+    updateScrubberFromClientX(event.clientX);
+  }
+
+  function handleComparisonPointerEnter(event: PointerEvent): void {
+    if (event.pointerType === 'mouse') {
+      updateScrubberFromClientX(event.clientX);
+    }
+  }
+
+  function handleComparisonPointerLeave(): void {
+    setScrubXPercent(null);
   }
 
   if (bootstrapStatus === 'error') {
@@ -402,6 +450,12 @@ export function WorkoutScreen({
       <section className={'hero-card ' + phaseClassName}>
         <p className="eyebrow">{controllerState.connectedDeviceName ?? 'No HR monitor connected'}</p>
         <h1 className="timer">{formatClock(phaseRemainingSec)}</h1>
+        {scrubDetail !== null && isScrubberEnabled ? <div className="hero-scrub-card">
+          <strong>{scrubDetail.timeLabel}</strong>
+          <span>Round {scrubDetail.roundNumber}</span>
+          <span>Current {formatDeltaValue(scrubDetail.currentDelta)} / Previous {formatDeltaValue(scrubDetail.previousDelta)}</span>
+          <span className={getDiffClassName({ roundIndex: scrubDetail.roundIndex, currentDelta: scrubDetail.currentDelta, previousDelta: scrubDetail.previousDelta, diffDelta: scrubDetail.diffDelta })}>{formatSignedDelta(scrubDetail.diffDelta)}</span>
+        </div> : null}
         <p className={'phase ' + phaseClassName}>{getPhaseHeading(controllerState.currentPhaseType, controllerState.controllerStatus)}</p>
         <p className="copy">{statusCopy}</p>
         <div className="hero-metrics">
@@ -488,7 +542,14 @@ export function WorkoutScreen({
             <p className="panel-copy">Start a session to build live round deltas.</p>
           ) : (
             <>
-              <div className="comparison-visual">
+              <div
+                ref={comparisonInteractionRef}
+                className={'comparison-visual comparison-visual--interactive' + (isScrubberEnabled ? '' : ' comparison-visual--disabled')}
+                onPointerDown={handleComparisonPointerDown as JSX.PointerEventHandler<HTMLDivElement>}
+                onPointerMove={handleComparisonPointerMove as JSX.PointerEventHandler<HTMLDivElement>}
+                onPointerEnter={handleComparisonPointerEnter as JSX.PointerEventHandler<HTMLDivElement>}
+                onPointerLeave={handleComparisonPointerLeave as JSX.PointerEventHandler<HTMLDivElement>}
+              >
                 <div className="comparison-chart-shell">
                   <div className="comparison-axis" aria-hidden="true">
                     {comparisonChart.guides.map((guide) => (
@@ -501,6 +562,7 @@ export function WorkoutScreen({
                         <line key={guide.label} x1="0" y1={guide.y} x2="100" y2={guide.y} stroke="rgba(255, 255, 255, 0.1)" strokeWidth="0.4" />
                       ))}
                       {comparisonChart.currentPathPoints !== null ? <polyline points={comparisonChart.currentPathPoints} fill="none" stroke="#fff8de" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /> : null}
+                      {scrubDetail !== null && isScrubberEnabled ? <line x1={scrubDetail.xPercent} y1="0" x2={scrubDetail.xPercent} y2="100" stroke="rgba(120, 184, 255, 0.95)" strokeWidth="0.8" /> : null}
                     </svg>
                     <div className="comparison-rounds" aria-hidden="true">
                       {comparisonChart.timeLabels.map((label) => (
@@ -529,6 +591,7 @@ export function WorkoutScreen({
                 </div>
                 <div className="comparison-strip" aria-label="Delta versus previous session by round midpoint">
                   <div className="comparison-strip-baseline" />
+                  {scrubDetail !== null && isScrubberEnabled ? <div className="comparison-strip-scrub-line" style={{ left: String(scrubDetail.xPercent) + '%' }} /> : null}
                   {comparisonStripBars.map((bar) => (
                     <div
                       key={bar.roundIndex}
@@ -818,6 +881,16 @@ interface ComparisonChartModel {
   maxElapsedSec: number;
 }
 
+interface ComparisonScrubDetail {
+  roundIndex: number;
+  roundNumber: number;
+  xPercent: number;
+  timeLabel: string;
+  currentDelta: number | null;
+  previousDelta: number | null;
+  diffDelta: number | null;
+}
+
 function createComparisonChartModel(
   currentStats: ChartIntervalStat[],
   previousStats: ChartIntervalStat[],
@@ -967,6 +1040,44 @@ function getChartDurationSec(timing: ComparisonChartTiming | null, stats: ChartI
 
 function getElapsedX(elapsedSec: number, maxElapsedSec: number): number {
   return (elapsedSec / maxElapsedSec) * 100;
+}
+
+function createComparisonScrubDetail(
+  scrubXPercent: number | null,
+  rounds: ComparisonRound[],
+  currentStats: ChartIntervalStat[],
+  previousStats: ChartIntervalStat[],
+  timing: ComparisonChartTiming | null,
+  maxElapsedSec: number
+): ComparisonScrubDetail | null {
+  if (scrubXPercent === null || timing === null || maxElapsedSec === 0 || rounds.length === 0) {
+    return null;
+  }
+
+  const scrubElapsedSec = (scrubXPercent / 100) * maxElapsedSec;
+  let nearestRound = rounds[0]!;
+  let nearestMidpointSec = getRoundStartSec(nearestRound.roundIndex, timing) + (timing.workDurationSec / 2);
+  let nearestDistance = Math.abs(nearestMidpointSec - scrubElapsedSec);
+
+  for (const round of rounds) {
+    const midpointSec = getRoundStartSec(round.roundIndex, timing) + (timing.workDurationSec / 2);
+    const distance = Math.abs(midpointSec - scrubElapsedSec);
+    if (distance < nearestDistance) {
+      nearestRound = round;
+      nearestMidpointSec = midpointSec;
+      nearestDistance = distance;
+    }
+  }
+
+  return {
+    roundIndex: nearestRound.roundIndex,
+    roundNumber: nearestRound.roundIndex + 1,
+    xPercent: getElapsedX(nearestMidpointSec, maxElapsedSec),
+    timeLabel: formatElapsedClock(nearestMidpointSec),
+    currentDelta: nearestRound.currentDelta,
+    previousDelta: nearestRound.previousDelta,
+    diffDelta: nearestRound.diffDelta
+  };
 }
 
 function buildTimeLabels(maxElapsedSec: number): ComparisonChartLabel[] {
