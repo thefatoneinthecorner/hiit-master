@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This file tracks unresolved product and implementation decisions that matter before or during the version 1 build.
+This file tracks the remaining unresolved product and implementation decisions that still matter for the current version 1 work.
 
 ## Decision Status
 
@@ -158,6 +158,9 @@ The product needs to serve both technical and non-technical analysis workflows.
 
 ## Next Decisions To Make
 
-The most important remaining decisions to answer before implementation starts are:
+The most important remaining decisions are:
 
-1. which mobile visual encoding best communicates at-a-glance comparison while keeping timer and compact graph legible
+1. whether the current compact comparison strip plus scrubber is the final mobile comparison pattern or still needs a different visual encoding
+2. when to replace the modeled sawtooth chart with real live heart-rate sample plotting
+3. whether warmup and cooldown should stay visually sparse or receive explicit rendered traces
+4. what level of completed-session detail should surface by default on phone-sized screens
