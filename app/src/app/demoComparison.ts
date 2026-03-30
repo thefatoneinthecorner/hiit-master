@@ -69,9 +69,7 @@ function createDemoHeartRateSamples(session: SessionRecord, peaks: number[], tro
       : Math.min(recoveryEndSec, recoveryEndSec + 2);
 
     samples.push(createHeartRateSample(startedAtMs, workStartSec, startBpm));
-    samples.push(createHeartRateSample(startedAtMs, workStartSec + (workDurationSec * 0.45), Math.round(startBpm + ((peakBpm - startBpm) * 0.72))));
     samples.push(createHeartRateSample(startedAtMs, peakAtSec, peakBpm));
-    samples.push(createHeartRateSample(startedAtMs, recoveryStartSec + Math.max(8, recoveryDurationSec * 0.35), Math.round(peakBpm - ((peakBpm - troughBpm) * 0.45))));
     samples.push(createHeartRateSample(startedAtMs, troughAtSec, troughBpm));
 
     roundStartSec = recoveryEndSec;

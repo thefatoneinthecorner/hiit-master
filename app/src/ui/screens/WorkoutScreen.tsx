@@ -52,6 +52,10 @@ export interface WorkoutScreenProps {
   now?: () => number;
 }
 
+interface WakeLockSentinelLike {
+  release: () => Promise<void>;
+}
+
 export function WorkoutScreen({
   storageFactory = createStorageRepositories,
   monitorFactory = createWebBluetoothHeartRateMonitor,
@@ -62,6 +66,11 @@ export function WorkoutScreen({
   const storageRef = useRef<StorageRepositories | null>(null);
   const comparisonInteractionRef = useRef<HTMLDivElement | null>(null);
   const isTickInFlightRef = useRef(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioDestinationRef = useRef<AudioNode | null>(null);
+  const wakeLockRef = useRef<WakeLockSentinelLike | null>(null);
+  const lastCountdownBeepSecRef = useRef<number | null>(null);
+  const previousPhaseTypeRef = useRef<PhaseType | null>(null);
   const [bootstrapStatus, setBootstrapStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
@@ -142,13 +151,101 @@ export function WorkoutScreen({
     return () => {
       cancelled = true;
       const monitor = monitorRef.current;
+      const wakeLock = wakeLockRef.current;
       monitorRef.current = null;
       storageRef.current = null;
+      wakeLockRef.current = null;
       if (monitor !== null) {
         void monitor.dispose();
       }
+      if (wakeLock !== null) {
+        void wakeLock.release();
+      }
     };
   }, [monitorFactory, now, storageFactory]);
+
+  async function ensureAudioReady(): Promise<void> {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const audioWindow = window as Window & {
+      AudioContext?: typeof AudioContext;
+      webkitAudioContext?: typeof AudioContext;
+    };
+    const AudioContextConstructor = audioWindow.AudioContext ?? audioWindow.webkitAudioContext;
+    if (AudioContextConstructor === undefined) {
+      return;
+    }
+
+    if (audioContextRef.current === null) {
+      const context = new AudioContextConstructor();
+      const compressor = context.createDynamicsCompressor();
+      compressor.connect(context.destination);
+      audioContextRef.current = context;
+      audioDestinationRef.current = compressor;
+    }
+
+    const audioContext = audioContextRef.current;
+    if (audioContext !== null && audioContext.state === 'suspended') {
+      await audioContext.resume();
+    }
+  }
+
+  function playTone(frequencyHz: number, durationSec: number): void {
+    const audioContext = audioContextRef.current;
+    const destination = audioDestinationRef.current;
+    if (audioContext === null || destination === null) {
+      return;
+    }
+
+    const startedAtSec = audioContext.currentTime;
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    oscillator.type = 'triangle';
+    oscillator.frequency.setValueAtTime(frequencyHz, startedAtSec);
+    oscillator.connect(gainNode);
+    gainNode.connect(destination);
+    gainNode.gain.setValueAtTime(0.0001, startedAtSec);
+    gainNode.gain.exponentialRampToValueAtTime(0.2, startedAtSec + 0.004);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, startedAtSec + durationSec);
+    oscillator.start(startedAtSec);
+    oscillator.stop(startedAtSec + durationSec + 0.05);
+  }
+
+  async function requestWakeLock(): Promise<void> {
+    if (typeof navigator === 'undefined') {
+      return;
+    }
+
+    const wakeLockManager = (navigator as Navigator & {
+      wakeLock?: { request: (type: 'screen') => Promise<WakeLockSentinelLike> };
+    }).wakeLock;
+
+    if (wakeLockManager === undefined || wakeLockRef.current !== null) {
+      return;
+    }
+
+    try {
+      wakeLockRef.current = await wakeLockManager.request('screen');
+    } catch {
+      wakeLockRef.current = null;
+    }
+  }
+
+  async function releaseWakeLock(): Promise<void> {
+    const wakeLock = wakeLockRef.current;
+    wakeLockRef.current = null;
+    if (wakeLock === null) {
+      return;
+    }
+
+    try {
+      await wakeLock.release();
+    } catch {
+      return;
+    }
+  }
 
   function syncControllerState(): WorkoutSessionControllerState | null {
     const controller = controllerRef.current;
@@ -250,6 +347,7 @@ export function WorkoutScreen({
     setConnectionMessage(null);
 
     try {
+      await ensureAudioReady();
       if (controllerState.hrConnectionStatus === 'connected') {
         await monitor.disconnect();
       } else {
@@ -269,6 +367,7 @@ export function WorkoutScreen({
       return;
     }
 
+    await ensureAudioReady();
     const startedAtMs = now();
     setSessionStartAtMs(startedAtMs);
     setPausedAccumulatedMs(0);
@@ -297,6 +396,7 @@ export function WorkoutScreen({
 
     const resumedAtMs = now();
     const pauseDeltaMs = pausedAtMs === null ? 0 : resumedAtMs - pausedAtMs;
+    void ensureAudioReady();
     controller.resume();
     setPausedAccumulatedMs((current) => current + pauseDeltaMs);
     setPausedAtMs(null);
@@ -394,6 +494,55 @@ export function WorkoutScreen({
     );
   const isScrubberEnabled = controllerState.controllerStatus !== 'running';
   const selectedHistorySession = historySessions.find((session) => session.id === selectedHistorySessionId) ?? null;
+
+  useEffect(() => {
+    if (controllerState.controllerStatus === 'running') {
+      void requestWakeLock();
+      return;
+    }
+
+    void releaseWakeLock();
+  }, [controllerState.controllerStatus]);
+
+  useEffect(() => {
+    async function handleVisibilityChange(): Promise<void> {
+      if (document.visibilityState === 'visible' && controllerState.controllerStatus === 'running') {
+        await requestWakeLock();
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [controllerState.controllerStatus]);
+
+  useEffect(() => {
+    if (controllerState.controllerStatus !== 'running') {
+      lastCountdownBeepSecRef.current = null;
+      previousPhaseTypeRef.current = controllerState.currentPhaseType;
+      return;
+    }
+
+    if (phaseRemainingSec > 0 && phaseRemainingSec <= 4 && lastCountdownBeepSecRef.current !== phaseRemainingSec) {
+      playTone(1760, 0.1);
+      lastCountdownBeepSecRef.current = phaseRemainingSec;
+    } else if (phaseRemainingSec > 4) {
+      lastCountdownBeepSecRef.current = null;
+    }
+
+    const previousPhaseType = previousPhaseTypeRef.current;
+    if (
+      previousPhaseType !== null
+      && controllerState.currentPhaseType !== null
+      && previousPhaseType !== controllerState.currentPhaseType
+    ) {
+      playTone(1760, 0.4);
+      lastCountdownBeepSecRef.current = null;
+    }
+
+    previousPhaseTypeRef.current = controllerState.currentPhaseType;
+  }, [controllerState.controllerStatus, controllerState.currentPhaseType, phaseRemainingSec]);
 
   if (bootstrapStatus === 'loading') {
     return (
