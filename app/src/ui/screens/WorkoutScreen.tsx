@@ -366,6 +366,9 @@ export function WorkoutScreen({
     : demoFixture.comparisonRounds;
   const comparisonChart = createComparisonChartModel(effectiveCurrentIntervalStats, effectivePreviousIntervalStats, currentChartTiming, previousChartTiming);
   const maxComparisonDiff = getMaxComparisonDiff(comparisonRounds);
+  const comparisonStripBars = comparisonChart === null
+    ? []
+    : createComparisonStripBars(comparisonRounds, currentChartTiming, comparisonChart.maxElapsedSec, maxComparisonDiff);
   const selectedHistorySession = historySessions.find((session) => session.id === selectedHistorySessionId) ?? null;
 
   if (bootstrapStatus === 'loading') {
@@ -421,7 +424,7 @@ export function WorkoutScreen({
       </section>
 
       <section className="status-grid">
-        <article className="panel">
+        <article className="panel panel--setup">
           <h2>Setup</h2>
           <div className="duration-control">
             <button type="button" onClick={() => setWorkDurationSec((current) => Math.max(MIN_WORK_DURATION_SEC, current - 1))} disabled={isSessionActive || workDurationSec <= MIN_WORK_DURATION_SEC || isConnecting}>
@@ -449,7 +452,7 @@ export function WorkoutScreen({
           {connectionMessage !== null ? <p className="panel-copy panel-copy--alert">{connectionMessage}</p> : null}
         </article>
 
-        <article className="panel">
+        <article className="panel panel--runtime">
           <h2>Runtime</h2>
           <div className="runtime-grid">
             <div>
@@ -479,7 +482,7 @@ export function WorkoutScreen({
           </p>
         </article>
 
-        <article className="panel panel-wide">
+        <article className="panel panel-wide panel--comparison">
           <h2>Live Comparison</h2>
           {comparisonChart === null ? (
             <p className="panel-copy">Start a session to build live round deltas.</p>
@@ -493,11 +496,10 @@ export function WorkoutScreen({
                     ))}
                   </div>
                   <div className="comparison-chart-frame">
-                    <svg className="comparison-chart" viewBox="0 0 100 100" role="img" aria-label="Interpolated workout heart-rate range chart for current and previous sessions" preserveAspectRatio="none">
+                    <svg className="comparison-chart" viewBox="0 0 100 100" role="img" aria-label="Current session heart-rate chart with comparison strip below" preserveAspectRatio="none">
                       {comparisonChart.guides.map((guide) => (
                         <line key={guide.label} x1="0" y1={guide.y} x2="100" y2={guide.y} stroke="rgba(255, 255, 255, 0.1)" strokeWidth="0.4" />
                       ))}
-                      {comparisonChart.previousPathPoints !== null ? <polyline points={comparisonChart.previousPathPoints} fill="none" stroke="#78b8ff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="3 2" /> : null}
                       {comparisonChart.currentPathPoints !== null ? <polyline points={comparisonChart.currentPathPoints} fill="none" stroke="#fff8de" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /> : null}
                     </svg>
                     <div className="comparison-rounds" aria-hidden="true">
@@ -510,33 +512,34 @@ export function WorkoutScreen({
                 <div className="comparison-legend" aria-hidden="true">
                   <div className="comparison-legend-item">
                     <span className="comparison-swatch comparison-swatch--current" />
-                    <span>Current range</span>
+                    <span>Current session</span>
                   </div>
                   <div className="comparison-legend-item">
-                    <span className="comparison-swatch comparison-swatch--previous" />
-                    <span>Previous range</span>
+                    <span className="comparison-swatch comparison-swatch--diff" />
+                    <span>Delta vs previous</span>
                   </div>
                 </div>
               </div>
 
-              <div className="comparison-bars">
-                {comparisonRounds.map((round) => (
-                  <div key={round.roundIndex} className="comparison-bar-row">
-                    <div className="comparison-bar-heading">
-                      <span>Round {round.roundIndex + 1}</span>
-                      <strong className={getDiffClassName(round)}>{formatSignedDelta(round.diffDelta)}</strong>
-                    </div>
-                    <div className="comparison-bar-track" aria-hidden="true">
-                      <div className="comparison-bar-zero" />
-                      <div className={getDiffBarClassName(round)} style={getDiffBarStyle(round, maxComparisonDiff)} />
-                    </div>
-                    <div className="comparison-bar-values">
-                      <small>Current {formatDeltaValue(round.currentDelta)}</small>
-                      <small>Previous {formatDeltaValue(round.previousDelta)}</small>
-                    </div>
-                  </div>
-                ))}
+              <div className="comparison-strip-shell">
+                <div className="comparison-strip-axis" aria-hidden="true">
+                  <span>+</span>
+                  <span>0</span>
+                  <span>-</span>
+                </div>
+                <div className="comparison-strip" aria-label="Delta versus previous session by round midpoint">
+                  <div className="comparison-strip-baseline" />
+                  {comparisonStripBars.map((bar) => (
+                    <div
+                      key={bar.roundIndex}
+                      className={bar.className}
+                      style={bar.style}
+                      title={bar.title}
+                    />
+                  ))}
+                </div>
               </div>
+              <p className="panel-copy">Each bar is centered on the midpoint of a work interval. Up means the current round delta beat the previous session, down means it underperformed.</p>
             </>
           )}
           {demoFixture !== null ? <p className="panel-copy">Demo comparison fixture active via demo_comparison=1.</p> : null}
@@ -545,7 +548,7 @@ export function WorkoutScreen({
           ) : null}
         </article>
 
-        <article className="panel panel-wide">
+        <article className="panel panel-wide panel--history">
           <h2>History</h2>
           <div className="history-layout">
             <div className="history-list">
@@ -678,28 +681,61 @@ function getDiffClassName(round: ComparisonRound): string {
 
 function getDiffBarClassName(round: ComparisonRound): string {
   if (round.diffDelta === null || round.diffDelta === 0) {
-    return 'comparison-bar comparison-bar--neutral';
+    return 'comparison-strip-bar comparison-strip-bar--neutral';
   }
 
   if (round.diffDelta > 0) {
-    return 'comparison-bar comparison-bar--up';
+    return 'comparison-strip-bar comparison-strip-bar--up';
   }
 
-  return 'comparison-bar comparison-bar--down';
+  return 'comparison-strip-bar comparison-strip-bar--down';
 }
 
-function getDiffBarStyle(round: ComparisonRound, maxComparisonDiff: number): CSSProperties {
-  if (round.diffDelta === null || round.diffDelta === 0 || maxComparisonDiff === 0) {
-    return { left: '50%', width: '0%' };
+function createComparisonStripBars(
+  rounds: ComparisonRound[],
+  timing: ComparisonChartTiming | null,
+  maxElapsedSec: number,
+  maxComparisonDiff: number
+): Array<{ roundIndex: number; className: string; style: CSSProperties; title: string }> {
+  if (timing === null || maxElapsedSec === 0) {
+    return [];
   }
 
-  const widthPercent = Math.max((Math.abs(round.diffDelta) / maxComparisonDiff) * 50, 2.5);
-  const leftPercent = round.diffDelta > 0 ? 50 : 50 - widthPercent;
+  return rounds.map((round) => {
+    const midpointSec = getRoundStartSec(round.roundIndex, timing) + (timing.workDurationSec / 2);
+    const xPercent = getElapsedX(midpointSec, maxElapsedSec);
+    const magnitude = round.diffDelta === null || maxComparisonDiff === 0
+      ? 0
+      : Math.abs(round.diffDelta) / maxComparisonDiff;
+    const heightPercent = round.diffDelta === null
+      ? 10
+      : Math.max(10, magnitude * 48);
+    const style: CSSProperties = {
+      left: String(xPercent) + '%',
+      height: String(heightPercent) + '%'
+    };
 
-  return {
-    left: String(leftPercent) + '%',
-    width: String(widthPercent) + '%'
-  };
+    if (round.diffDelta === null || round.diffDelta === 0) {
+      style.top = '50%';
+      style.transform = 'translate(-50%, -50%)';
+    } else if (round.diffDelta > 0) {
+      style.bottom = '50%';
+      style.transform = 'translateX(-50%)';
+    } else {
+      style.top = '50%';
+      style.transform = 'translateX(-50%)';
+    }
+
+    return {
+      roundIndex: round.roundIndex,
+      className: getDiffBarClassName(round),
+      style,
+      title: 'Round ' + String(round.roundIndex + 1)
+        + '  current ' + formatDeltaValue(round.currentDelta)
+        + '  previous ' + formatDeltaValue(round.previousDelta)
+        + '  diff ' + formatSignedDelta(round.diffDelta)
+    };
+  });
 }
 
 function getMaxComparisonDiff(rounds: ComparisonRound[]): number {
@@ -779,6 +815,7 @@ interface ComparisonChartModel {
   previousPathPoints: string | null;
   guides: ComparisonChartGuide[];
   timeLabels: ComparisonChartLabel[];
+  maxElapsedSec: number;
 }
 
 function createComparisonChartModel(
@@ -815,7 +852,8 @@ function createComparisonChartModel(
     currentPathPoints: buildSawtoothPoints(sortedCurrentStats, currentTiming, chartMin, chartMax, maxElapsedSec),
     previousPathPoints: buildSawtoothPoints(sortedPreviousStats, previousTiming, chartMin, chartMax, maxElapsedSec),
     guides: buildChartGuides(chartMin, chartMax),
-    timeLabels: buildTimeLabels(maxElapsedSec)
+    timeLabels: buildTimeLabels(maxElapsedSec),
+    maxElapsedSec
   };
 }
 
