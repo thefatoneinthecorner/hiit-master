@@ -36,6 +36,7 @@ Implemented behavior:
 - the app blocks session start unless the monitor is connected
 - if connection drops after start, the session may continue but becomes compromised
 - connection errors are surfaced in the UI
+- Bluetooth battery level is not currently read, but standard `battery_service` support is a plausible version 2 enhancement for monitors that expose it
 
 Current limitation:
 
@@ -127,6 +128,9 @@ Important gaps between the current UI and the intended product:
 - scrubber detail is round-based, not sample-based
 - warmup and cooldown graph treatment is still sparse and not yet visually expressive
 - export actions are not yet surfaced in the current workout UI
+- suspected bug: the comparison delta may appear too early, including at the start of the first work period, and needs verification against live workout data
+- suspected bug: audio cue timing may include one extra beep, so countdown and transition cue counts need live verification
+- suspected bug: the live graph can occasionally jump to an implausible flat line around 300 BPM before recovering, which suggests a transient sample parsing, scaling, or rendering fault
 - the portrait-phone layout is functional but still needs spacing and hierarchy refinement
 - historical correction tools described in prototype notes are not implemented
 

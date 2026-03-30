@@ -185,6 +185,7 @@ For each stored session the app should show at minimum:
 - The app must record explicit missing-heart-rate samples during dropout intervals.
 - The app must continue the same session timeline if the device reconnects.
 - The app must persist session-level compromise and eligibility states for comparison and baseline use.
+- Version 2 candidate: if the connected monitor exposes the standard `battery_service`, the app should read and display battery level during setup and runtime.
 
 ### Graphing
 
