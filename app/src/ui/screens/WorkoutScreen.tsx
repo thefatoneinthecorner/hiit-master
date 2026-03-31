@@ -566,6 +566,7 @@ export function WorkoutScreen({
       comparisonChart.maxElapsedSec
     );
   const isScrubberEnabled = controllerState.controllerStatus !== 'running';
+  const isPortraitPhone = isPortraitPhoneLayout();
   const showSetupRuntimePanels = isSessionActive === false;
   const selectedHistorySession = historySessions.find((session) => session.id === selectedHistorySessionId) ?? null;
   const selectedHistoryComparisonSession = getPreviousComparisonSessionForHistory(historySessions, selectedHistorySessionId);
@@ -600,6 +601,8 @@ export function WorkoutScreen({
       selectedHistoryTiming,
       selectedHistoryChart.maxElapsedSec
     );
+  const liveTimeLabels = isPortraitPhone ? comparisonChart?.timeLabels.slice(1) ?? [] : comparisonChart?.timeLabels ?? [];
+  const historyTimeLabels = isPortraitPhone ? selectedHistoryChart?.timeLabels.slice(1) ?? [] : selectedHistoryChart?.timeLabels ?? [];
 
   useEffect(() => {
     if (controllerState.controllerStatus === 'running') {
@@ -723,6 +726,34 @@ export function WorkoutScreen({
     setHistoryScrubXPercent(null);
   }
 
+  function isPortraitPhoneLayout(): boolean {
+    return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 600px) and (orientation: portrait)').matches;
+  }
+
+  function handleScreenTap(event: MouseEvent): void {
+    if (isSessionActive === false || isPortraitPhoneLayout() === false) {
+      return;
+    }
+
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    if (target.closest('button, a, input, select, textarea, label') !== null) {
+      return;
+    }
+
+    if (controllerState.controllerStatus === 'running') {
+      handlePause();
+      return;
+    }
+
+    if (controllerState.controllerStatus === 'paused') {
+      handleResume();
+    }
+  }
+
   if (bootstrapStatus === 'error') {
     return (
       <main className="screen">
@@ -737,7 +768,7 @@ export function WorkoutScreen({
   }
 
   return (
-    <main className="screen">
+    <main className="screen" onClick={handleScreenTap as JSX.MouseEventHandler<HTMLElement>}>
       <section className={'hero-card hero-card--session ' + phaseClassName + (isSessionActive ? ' hero-card--running' : '')}>
         <p className="eyebrow">{controllerState.connectedDeviceName ?? 'No HR monitor connected'}</p>
         <h1 className="timer">{startupCountdownSec === null ? formatClock(phaseRemainingSec) : '00:0' + String(startupCountdownSec)}</h1>
@@ -885,7 +916,7 @@ export function WorkoutScreen({
                       {scrubDetail !== null && isScrubberEnabled ? <line x1={scrubDetail.xPercent} y1="0" x2={scrubDetail.xPercent} y2="100" stroke="rgba(120, 184, 255, 0.95)" strokeWidth="0.8" /> : null}
                     </svg>
                     <div className="comparison-rounds" aria-hidden="true">
-                      {comparisonChart.timeLabels.map((label) => (
+                      {liveTimeLabels.map((label) => (
                         <span key={label.label} style={{ left: String(label.xPercent) + '%' }}>{label.label}</span>
                       ))}
                     </div>
@@ -977,7 +1008,7 @@ export function WorkoutScreen({
                             {selectedHistoryScrubDetail !== null ? <line x1={selectedHistoryScrubDetail.xPercent} y1="0" x2={selectedHistoryScrubDetail.xPercent} y2="100" stroke="rgba(120, 184, 255, 0.95)" strokeWidth="0.8" /> : null}
                           </svg>
                           <div className="comparison-rounds" aria-hidden="true">
-                            {selectedHistoryChart.timeLabels.map((label) => (
+                            {historyTimeLabels.map((label) => (
                               <span key={label.label} style={{ left: String(label.xPercent) + '%' }}>{label.label}</span>
                             ))}
                           </div>

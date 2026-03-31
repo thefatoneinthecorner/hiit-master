@@ -160,13 +160,16 @@ button:disabled {
 }
 
 .hero-scrub-slot {
-  min-height: 94px;
   display: grid;
   align-items: start;
-  margin-top: 14px;
 }
 
-.hero-scrub-slot--history {
+.hero-scrub-slot:not(:empty) {
+  min-height: 72px;
+  margin-top: 8px;
+}
+
+.hero-scrub-slot--history:not(:empty) {
   min-height: 88px;
   margin-top: 0;
 }
@@ -651,7 +654,7 @@ button:disabled {
   grid-template-columns: 56px minmax(0, 1fr);
   gap: 12px;
   align-items: stretch;
-  margin-top: 18px;
+  margin-top: 12px;
 }
 
 .comparison-strip-axis {
@@ -752,7 +755,6 @@ button:disabled {
   .hero-card .eyebrow,
   .hero-card .phase,
   .hero-card .copy,
-  .hero-card .hero-metrics,
   .hero-card .progress-track {
     display: none;
   }
@@ -762,19 +764,76 @@ button:disabled {
     line-height: 0.88;
   }
 
+  .hero-card .hero-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .metric-pill {
+    padding: 10px 8px;
+    border-radius: 14px;
+  }
+
+  .metric-pill span {
+    margin-bottom: 4px;
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+  }
+
+  .hero-card--running .metric-pill--round strong,
+  .hero-card--running .metric-pill--total strong,
+  .hero-card--running .metric-pill--bpm strong {
+    font-size: 1.5rem;
+    line-height: 1;
+  }
+
   .status-grid {
     display: grid;
     grid-template-columns: 1fr;
   }
 
-  .panel--setup,
   .panel--runtime,
-  .panel--history {
+  .panel--history,
+  .panel--session-controls {
     display: none;
   }
 
-  .panel--comparison {
-    padding: 16px 14px;
+  .panel--setup {
+    padding: 14px 12px;
+  }
+
+  .panel--setup h2,
+  .panel--setup .panel-copy {
+    display: none;
+  }
+
+  .panel--setup .duration-control {
+    grid-template-columns: 52px 1fr 52px;
+    gap: 8px;
+  }
+
+  .panel--setup .duration-readout {
+    padding: 10px 12px;
+    border-radius: 14px;
+  }
+
+  .panel--setup .action-stack {
+    margin-top: 10px;
+    gap: 8px;
+  }
+
+  .panel--setup button {
+    padding: 0.8rem 0.9rem;
+  }
+
+  .panel.panel--comparison {
+    display: contents;
+  }
+
+  .panel--comparison .comparison-visual {
+    gap: 0;
   }
 
   .panel--comparison > h2,
@@ -784,9 +843,13 @@ button:disabled {
   }
 
   .comparison-visual,
-  .comparison-chart-shell,
+  .comparison-chart-shell {
+    gap: 8px;
+  }
+
   .comparison-strip-shell {
     gap: 8px;
+    margin-top: 22px;
   }
 
   .comparison-chart-shell,
@@ -820,12 +883,12 @@ button:disabled {
     width: 7px;
   }
 
-  .hero-scrub-slot {
-    min-height: 82px;
-    margin-top: 10px;
+  .hero-scrub-slot:not(:empty) {
+    min-height: 62px;
+    margin-top: 6px;
   }
 
-  .hero-scrub-slot--history {
+  .hero-scrub-slot--history:not(:empty) {
     min-height: 78px;
     margin-top: 0;
   }
