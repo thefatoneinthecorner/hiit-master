@@ -131,6 +131,16 @@ Important gaps between the current UI and the intended product:
 - suspected bug: the comparison delta may appear too early, including at the start of the first work period, and needs verification against live workout data
 - suspected bug: audio cue timing may include one extra beep, so countdown and transition cue counts need live verification
 - suspected bug: the live graph can occasionally jump to an implausible flat line around 300 BPM before recovering, which suggests a transient sample parsing, scaling, or rendering fault
+- suspected bug: there are no beeps and no 3-2-1 countdown at the very start of warmup, which makes session start feel silent and abrupt
+- suspected bug: the live BPM readout can become illegible in the active-session layout
+- suspected bug: the rounds readout can become illegible in the active-session layout
+- suspected bug: the heart-rate graph stroke appears too heavy during live use
+- suspected bug: the countdown timer is not visually centered in its panel
+- suspected bug: the delta bars can scroll off the bottom of the viewport in live use
+- suspected bug: the beeps are too quiet for reliable use during a real workout
+- suspected bug: the graph view can become vertically squashed between roughly 200 BPM and the low 20s, reducing readability
+- suspected UX issue: once a session is running, the setup and runtime panels provide little value and consume too much space
+- suspected bug: the rounds panel layout is poor in real use and needs redesign
 - the portrait-phone layout is functional but still needs spacing and hierarchy refinement
 - historical correction tools described in prototype notes are not implemented
 
