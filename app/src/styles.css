@@ -81,6 +81,41 @@ button:disabled {
   padding: 28px;
 }
 
+.hero-card--session {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+}
+
+.hero-card--session .copy {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero-card--running {
+  padding-top: 32px;
+  padding-bottom: 32px;
+}
+
+.hero-card--running .eyebrow {
+  margin-bottom: 10px;
+  font-size: 0.8rem;
+}
+
+.hero-card--running .timer {
+  font-size: clamp(4.75rem, 24vw, 9rem);
+  text-align: center;
+}
+
+.hero-card--running .phase {
+  margin-top: 14px;
+  font-size: 1rem;
+}
+
+.hero-card--running .copy {
+  max-width: 34rem;
+}
+
 .eyebrow {
   margin: 0 0 12px;
   color: var(--compare);
@@ -124,14 +159,28 @@ button:disabled {
   line-height: 1.5;
 }
 
+.hero-scrub-slot {
+  min-height: 94px;
+  display: grid;
+  align-items: start;
+  margin-top: 14px;
+}
+
+.hero-scrub-slot--history {
+  min-height: 88px;
+  margin-top: 0;
+}
+
 .hero-scrub-card {
   display: inline-grid;
   gap: 3px;
-  margin-top: 14px;
+  margin-top: 0;
   padding: 10px 12px;
   border: 1px solid rgba(120, 184, 255, 0.24);
   border-radius: 14px;
   background: rgba(8, 16, 25, 0.72);
+  justify-items: center;
+  text-align: center;
 }
 
 .hero-scrub-card strong,
@@ -148,6 +197,13 @@ button:disabled {
   font-size: 0.78rem;
 }
 
+.hero-scrub-card--history {
+  display: grid;
+  justify-items: start;
+  text-align: left;
+  margin: 0 0 14px;
+}
+
 .panel-copy--alert {
   color: var(--alert);
 }
@@ -160,6 +216,7 @@ button:disabled {
   display: grid;
   gap: 12px;
   margin-top: 20px;
+  width: 100%;
 }
 
 .metric-pill {
@@ -167,6 +224,11 @@ button:disabled {
   border: 1px solid var(--line);
   border-radius: 18px;
   background: rgba(8, 16, 25, 0.55);
+  text-align: center;
+}
+
+.metric-pill--bpm {
+  background: linear-gradient(180deg, rgba(255, 248, 222, 0.12), rgba(8, 16, 25, 0.72));
 }
 
 .metric-pill span,
@@ -193,6 +255,20 @@ button:disabled {
 .history-item strong {
   font-size: 1.1rem;
   font-variant-numeric: tabular-nums;
+}
+
+.hero-card--running .metric-pill strong {
+  font-size: 1.5rem;
+}
+
+.hero-card--running .metric-pill--bpm strong {
+  font-size: clamp(2.25rem, 8vw, 3.5rem);
+  line-height: 0.95;
+  color: var(--timer);
+}
+
+.hero-card--running .metric-pill--round strong {
+  font-size: clamp(1.35rem, 4.8vw, 2rem);
 }
 
 .progress-track {
@@ -247,6 +323,10 @@ button:disabled {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.action-stack--session {
+  margin-top: 0;
+}
+
 .primary-action {
   background: linear-gradient(135deg, rgba(120, 184, 255, 0.2), rgba(120, 184, 255, 0.08));
 }
@@ -261,7 +341,8 @@ button:disabled {
 .comparison-card,
 .history-stat-card,
 .history-item,
-.history-detail {
+.history-detail,
+.session-runtime-pill {
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: 18px;
@@ -270,6 +351,21 @@ button:disabled {
 
 .runtime-grid--wide {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.panel--session-controls {
+  display: grid;
+  gap: 14px;
+}
+
+.session-controls-head {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.session-runtime-pill {
+  text-align: center;
 }
 
 .comparison-grid {
@@ -311,6 +407,10 @@ button:disabled {
   gap: 10px;
 }
 
+.history-list--footer {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
 .history-item {
   text-align: left;
 }
@@ -322,6 +422,8 @@ button:disabled {
 
 .history-detail {
   min-height: 100%;
+  display: grid;
+  gap: 12px;
 }
 
 .history-stats-grid {
@@ -338,10 +440,6 @@ button:disabled {
 @media (min-width: 720px) {
   .hero-metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .history-layout {
-    grid-template-columns: minmax(240px, 320px) 1fr;
   }
 }
 
@@ -364,7 +462,8 @@ button:disabled {
   .runtime-grid,
   .runtime-grid--wide,
   .action-stack--inline,
-  .comparison-values {
+  .comparison-values,
+  .session-controls-head {
     grid-template-columns: 1fr;
   }
 
@@ -404,9 +503,13 @@ button:disabled {
 }
 
 .comparison-visual--interactive {
-  cursor: ew-resize;
   user-select: none;
   touch-action: pan-y;
+}
+
+.comparison-visual--interactive .comparison-chart-frame,
+.comparison-visual--interactive .comparison-strip {
+  cursor: ew-resize;
 }
 
 .comparison-visual--disabled {
@@ -421,16 +524,15 @@ button:disabled {
 }
 
 .comparison-axis {
-  display: grid;
-  grid-template-rows: repeat(4, 1fr);
-  align-content: stretch;
-  padding: 10px 0;
+  position: relative;
 }
 
 .comparison-axis span {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  display: block;
+  text-align: right;
   color: var(--muted);
   font-size: 0.82rem;
   font-variant-numeric: tabular-nums;
@@ -611,6 +713,26 @@ button:disabled {
 }
 
 
+@media (min-width: 900px) {
+  .status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .panel-wide {
+    grid-column: 1 / -1;
+  }
+
+  .hero-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .hero-card--running .hero-metrics {
+    grid-template-columns: 1.1fr 1.3fr 1.1fr;
+    align-items: stretch;
+  }
+}
+
+
 @media (max-width: 600px) and (orientation: portrait) {
   .screen {
     padding: 12px;
@@ -693,8 +815,18 @@ button:disabled {
     width: 7px;
   }
 
-  .hero-scrub-card {
+  .hero-scrub-slot {
+    min-height: 82px;
     margin-top: 10px;
+  }
+
+  .hero-scrub-slot--history {
+    min-height: 78px;
+    margin-top: 0;
+  }
+
+  .hero-scrub-card {
+    margin-top: 0;
     padding: 8px 10px;
   }
 
@@ -704,5 +836,14 @@ button:disabled {
 
   .hero-scrub-card span {
     font-size: 0.7rem;
+  }
+
+  .hero-scrub-card--history {
+    justify-items: center;
+    text-align: center;
+  }
+
+  .history-list--footer {
+    grid-template-columns: 1fr;
   }
 }

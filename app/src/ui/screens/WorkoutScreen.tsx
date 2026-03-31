@@ -17,6 +17,7 @@ import {
 import { createStorageRepositories, type StorageRepositories } from '../../infrastructure/storage/db';
 import type { IntervalStatRecord, SessionRecord } from '../../infrastructure/storage/types';
 import type { WorkoutPlan } from '../../domain/workout/types';
+import { getWorkWindows } from '../../domain/workout/plan';
 
 const INITIAL_CONTROLLER_STATE: WorkoutSessionControllerState = {
   controllerStatus: 'idle',
@@ -65,6 +66,9 @@ export function WorkoutScreen({
   const monitorRef = useRef<HeartRateMonitor | null>(null);
   const storageRef = useRef<StorageRepositories | null>(null);
   const comparisonInteractionRef = useRef<HTMLDivElement | null>(null);
+  const comparisonPlotRef = useRef<HTMLDivElement | null>(null);
+  const historyComparisonInteractionRef = useRef<HTMLDivElement | null>(null);
+  const historyComparisonPlotRef = useRef<HTMLDivElement | null>(null);
   const isTickInFlightRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioDestinationRef = useRef<AudioNode | null>(null);
@@ -84,8 +88,11 @@ export function WorkoutScreen({
   const [historySessions, setHistorySessions] = useState<SessionRecord[]>([]);
   const [selectedHistorySessionId, setSelectedHistorySessionId] = useState<string | null>(null);
   const [selectedHistoryStats, setSelectedHistoryStats] = useState<IntervalStatRecord[]>([]);
+  const [selectedHistorySamples, setSelectedHistorySamples] = useState<HeartRateSample[]>([]);
+  const [selectedHistoryPreviousStats, setSelectedHistoryPreviousStats] = useState<IntervalStatRecord[]>([]);
   const [demoFixture, setDemoFixture] = useState<DemoComparisonFixture | null>(null);
   const [scrubXPercent, setScrubXPercent] = useState<number | null>(null);
+  const [historyScrubXPercent, setHistoryScrubXPercent] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -332,6 +339,46 @@ export function WorkoutScreen({
     };
   }, [selectedHistorySessionId]);
 
+  useEffect(() => {
+    const storage = storageRef.current;
+    const selectedHistorySession = historySessions.find((session) => session.id === selectedHistorySessionId) ?? null;
+    const previousHistorySession = getPreviousComparisonSessionForHistory(historySessions, selectedHistorySessionId);
+    if (storage === null || selectedHistorySession === null) {
+      setSelectedHistorySamples([]);
+      setSelectedHistoryPreviousStats([]);
+      return;
+    }
+
+    let cancelled = false;
+    const historyComparisonStorage = storage;
+    const historyComparisonSession = selectedHistorySession;
+
+    async function loadHistoryComparisonData(): Promise<void> {
+      const [sampleRecords, previousStats] = await Promise.all([
+        historyComparisonStorage.heartRateSamples.listBySessionId(historyComparisonSession.id),
+        previousHistorySession === null
+          ? Promise.resolve([])
+          : historyComparisonStorage.intervalStats.listBySessionId(previousHistorySession.id)
+      ]);
+      if (cancelled) {
+        return;
+      }
+
+      setSelectedHistorySamples(sampleRecords.map((sample) => ({
+        timestampMs: sample.timestampMs,
+        bpm: sample.bpm,
+        isMissing: sample.isMissing
+      })));
+      setSelectedHistoryPreviousStats(previousStats);
+    }
+
+    void loadHistoryComparisonData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [historySessions, selectedHistorySessionId]);
+
   async function handleConnectToggle(): Promise<void> {
     const monitor = monitorRef.current;
     if (monitor === null) {
@@ -468,7 +515,11 @@ export function WorkoutScreen({
     ? getChartTimingFromSession(previousComparisonSession)
     : getChartTimingFromSession(demoFixture.previousSession);
   const comparisonRounds = demoFixture === null
-    ? createComparisonRounds(effectiveCurrentIntervalStats, effectivePreviousIntervalStats)
+    ? getVisibleLiveComparisonRounds(
+      createComparisonRounds(effectiveCurrentIntervalStats, effectivePreviousIntervalStats),
+      controllerState.workoutPlan,
+      controllerState.elapsedSec
+    )
     : demoFixture.comparisonRounds;
   const comparisonChart = createComparisonChartModel(
     effectiveCurrentHeartRateSamples,
@@ -481,7 +532,14 @@ export function WorkoutScreen({
   const maxComparisonDiff = getMaxComparisonDiff(comparisonRounds);
   const comparisonStripBars = comparisonChart === null
     ? []
-    : createComparisonStripBars(comparisonRounds, currentChartTiming, comparisonChart.maxElapsedSec, maxComparisonDiff);
+    : createComparisonStripBars(
+      comparisonRounds,
+      currentChartTiming,
+      comparisonChart.maxElapsedSec,
+      maxComparisonDiff,
+      effectiveCurrentHeartRateSamples,
+      demoFixture === null ? controllerState.sessionStartedAtMs : Date.parse(demoFixture.currentSession.startedAt)
+    );
   const scrubDetail = comparisonChart === null
     ? null
     : createComparisonScrubDetail(
@@ -493,7 +551,40 @@ export function WorkoutScreen({
       comparisonChart.maxElapsedSec
     );
   const isScrubberEnabled = controllerState.controllerStatus !== 'running';
+  const showSetupRuntimePanels = isSessionActive === false;
   const selectedHistorySession = historySessions.find((session) => session.id === selectedHistorySessionId) ?? null;
+  const selectedHistoryComparisonSession = getPreviousComparisonSessionForHistory(historySessions, selectedHistorySessionId);
+  const selectedHistoryTiming = getChartTimingFromSession(selectedHistorySession);
+  const selectedHistoryPreviousTiming = getChartTimingFromSession(selectedHistoryComparisonSession);
+  const selectedHistoryComparisonRounds = createComparisonRounds(selectedHistoryStats, selectedHistoryPreviousStats);
+  const selectedHistoryChart = createComparisonChartModel(
+    selectedHistorySamples,
+    selectedHistorySession === null ? null : Date.parse(selectedHistorySession.startedAt),
+    selectedHistoryStats,
+    selectedHistoryPreviousStats,
+    selectedHistoryTiming,
+    selectedHistoryPreviousTiming
+  );
+  const selectedHistoryStripBars = selectedHistoryChart === null
+    ? []
+    : createComparisonStripBars(
+      selectedHistoryComparisonRounds,
+      selectedHistoryTiming,
+      selectedHistoryChart.maxElapsedSec,
+      getMaxComparisonDiff(selectedHistoryComparisonRounds),
+      selectedHistorySamples,
+      selectedHistorySession === null ? null : Date.parse(selectedHistorySession.startedAt)
+    );
+  const selectedHistoryScrubDetail = selectedHistoryChart === null
+    ? null
+    : createComparisonScrubDetail(
+      historyScrubXPercent,
+      selectedHistoryComparisonRounds,
+      selectedHistorySamples,
+      selectedHistorySession === null ? null : Date.parse(selectedHistorySession.startedAt),
+      selectedHistoryTiming,
+      selectedHistoryChart.maxElapsedSec
+    );
 
   useEffect(() => {
     if (controllerState.controllerStatus === 'running') {
@@ -557,13 +648,13 @@ export function WorkoutScreen({
     );
   }
 
-  function updateScrubberFromClientX(clientX: number): void {
-    if (isScrubberEnabled === false) {
-      return;
-    }
-
-    const container = comparisonInteractionRef.current;
-    if (container === null) {
+  function updateScrubberFromClientX(
+    clientX: number,
+    container: HTMLDivElement | null,
+    setValue: (value: number | null) => void,
+    isEnabled: boolean
+  ): void {
+    if (isEnabled === false || container === null) {
       return;
     }
 
@@ -572,13 +663,17 @@ export function WorkoutScreen({
       return;
     }
 
+    if (clientX < bounds.left || clientX > bounds.right) {
+      return;
+    }
+
     const rawPercent = ((clientX - bounds.left) / bounds.width) * 100;
     const clampedPercent = Math.max(0, Math.min(100, rawPercent));
-    setScrubXPercent(clampedPercent);
+    setValue(clampedPercent);
   }
 
   function handleComparisonPointerDown(event: PointerEvent): void {
-    updateScrubberFromClientX(event.clientX);
+    updateScrubberFromClientX(event.clientX, comparisonPlotRef.current, setScrubXPercent, isScrubberEnabled);
   }
 
   function handleComparisonPointerMove(event: PointerEvent): void {
@@ -586,17 +681,31 @@ export function WorkoutScreen({
       return;
     }
 
-    updateScrubberFromClientX(event.clientX);
+    updateScrubberFromClientX(event.clientX, comparisonPlotRef.current, setScrubXPercent, isScrubberEnabled);
   }
 
-  function handleComparisonPointerEnter(event: PointerEvent): void {
-    if (event.pointerType === 'mouse') {
-      updateScrubberFromClientX(event.clientX);
-    }
-  }
+  function handleComparisonPointerEnter(_event: PointerEvent): void {}
 
   function handleComparisonPointerLeave(): void {
     setScrubXPercent(null);
+  }
+
+  function handleHistoryComparisonPointerDown(event: PointerEvent): void {
+    updateScrubberFromClientX(event.clientX, historyComparisonPlotRef.current, setHistoryScrubXPercent, true);
+  }
+
+  function handleHistoryComparisonPointerMove(event: PointerEvent): void {
+    if (event.buttons === 0 && event.pointerType === 'mouse') {
+      return;
+    }
+
+    updateScrubberFromClientX(event.clientX, historyComparisonPlotRef.current, setHistoryScrubXPercent, true);
+  }
+
+  function handleHistoryComparisonPointerEnter(_event: PointerEvent): void {}
+
+  function handleHistoryComparisonPointerLeave(): void {
+    setHistoryScrubXPercent(null);
   }
 
   if (bootstrapStatus === 'error') {
@@ -614,28 +723,30 @@ export function WorkoutScreen({
 
   return (
     <main className="screen">
-      <section className={'hero-card ' + phaseClassName}>
+      <section className={'hero-card hero-card--session ' + phaseClassName + (isSessionActive ? ' hero-card--running' : '')}>
         <p className="eyebrow">{controllerState.connectedDeviceName ?? 'No HR monitor connected'}</p>
         <h1 className="timer">{formatClock(phaseRemainingSec)}</h1>
-        {scrubDetail !== null && isScrubberEnabled ? <div className="hero-scrub-card">
-          <strong>{scrubDetail.timeLabel}</strong>
-          <span>Round {scrubDetail.roundNumber}</span>
-          <span>{scrubDetail.currentBpm === null ? 'No HR data' : 'BPM ' + formatDeltaValue(scrubDetail.currentBpm)}</span>
-          <span>Current {formatDeltaValue(scrubDetail.currentDelta)} / Previous {formatDeltaValue(scrubDetail.previousDelta)}</span>
-          <span className={getDiffClassName({ roundIndex: scrubDetail.roundIndex, currentDelta: scrubDetail.currentDelta, previousDelta: scrubDetail.previousDelta, diffDelta: scrubDetail.diffDelta })}>{formatSignedDelta(scrubDetail.diffDelta)}</span>
-        </div> : null}
+        <div className="hero-scrub-slot" aria-live="polite">
+          {scrubDetail !== null && isScrubberEnabled ? <div className="hero-scrub-card">
+            <strong>{scrubDetail.timeLabel}</strong>
+            <span>Round {scrubDetail.roundNumber}</span>
+            <span>{scrubDetail.currentBpm === null ? 'No HR data' : 'BPM ' + formatDeltaValue(scrubDetail.currentBpm)}</span>
+            <span>Current {formatDeltaValue(scrubDetail.currentDelta)} / Previous {formatDeltaValue(scrubDetail.previousDelta)}</span>
+            <span className={getDiffClassName({ roundIndex: scrubDetail.roundIndex, currentDelta: scrubDetail.currentDelta, previousDelta: scrubDetail.previousDelta, diffDelta: scrubDetail.diffDelta })}>{formatSignedDelta(scrubDetail.diffDelta)}</span>
+          </div> : null}
+        </div>
         <p className={'phase ' + phaseClassName}>{getPhaseHeading(controllerState.currentPhaseType, controllerState.controllerStatus)}</p>
         <p className="copy">{statusCopy}</p>
         <div className="hero-metrics">
-          <div className="metric-pill">
+          <div className="metric-pill metric-pill--round">
             <span>Round</span>
             <strong>{roundLabel}</strong>
           </div>
-          <div className="metric-pill">
+          <div className="metric-pill metric-pill--bpm">
             <span>BPM</span>
             <strong>{controllerState.currentBpm === null ? '--' : controllerState.currentBpm}</strong>
           </div>
-          <div className="metric-pill">
+          <div className="metric-pill metric-pill--total">
             <span>Total Left</span>
             <strong>{formatClock(totalRemainingSec)}</strong>
           </div>
@@ -646,63 +757,85 @@ export function WorkoutScreen({
       </section>
 
       <section className="status-grid">
-        <article className="panel panel--setup">
-          <h2>Setup</h2>
-          <div className="duration-control">
-            <button type="button" onClick={() => setWorkDurationSec((current) => Math.max(MIN_WORK_DURATION_SEC, current - 1))} disabled={isSessionActive || workDurationSec <= MIN_WORK_DURATION_SEC || isConnecting}>
-              -
-            </button>
-            <div className="duration-readout">
-              <span>Work Duration</span>
-              <strong>{workDurationSec}s</strong>
+        {showSetupRuntimePanels ? <>
+          <article className="panel panel--setup">
+            <h2>Setup</h2>
+            <div className="duration-control">
+              <button type="button" onClick={() => setWorkDurationSec((current) => Math.max(MIN_WORK_DURATION_SEC, current - 1))} disabled={isSessionActive || workDurationSec <= MIN_WORK_DURATION_SEC || isConnecting}>
+                -
+              </button>
+              <div className="duration-readout">
+                <span>Work Duration</span>
+                <strong>{workDurationSec}s</strong>
+              </div>
+              <button type="button" onClick={() => setWorkDurationSec((current) => Math.min(MAX_WORK_DURATION_SEC, current + 1))} disabled={isSessionActive || workDurationSec >= MAX_WORK_DURATION_SEC || isConnecting}>
+                +
+              </button>
             </div>
-            <button type="button" onClick={() => setWorkDurationSec((current) => Math.min(MAX_WORK_DURATION_SEC, current + 1))} disabled={isSessionActive || workDurationSec >= MAX_WORK_DURATION_SEC || isConnecting}>
-              +
-            </button>
-          </div>
-          <div className="action-stack">
-            <button type="button" className="primary-action" onClick={() => void handleConnectToggle()} disabled={isConnecting}>
-              {getConnectionActionLabel(controllerState, isConnecting)}
-            </button>
-            <button type="button" className="primary-action" onClick={() => void handleStartSession()} disabled={canStart === false || isConnecting}>
-              {controllerState.controllerStatus === 'completed' || controllerState.controllerStatus === 'ended_early' ? 'Start New Session' : 'Start Session'}
-            </button>
-          </div>
-          <p className="panel-copy">
-            Uses the real Web Bluetooth `heart_rate` service. Connection drops are recorded through the existing session-controller compromise flow.
-          </p>
-          {connectionMessage !== null ? <p className="panel-copy panel-copy--alert">{connectionMessage}</p> : null}
-        </article>
+            <div className="action-stack">
+              <button type="button" className="primary-action" onClick={() => void handleConnectToggle()} disabled={isConnecting}>
+                {getConnectionActionLabel(controllerState, isConnecting)}
+              </button>
+              <button type="button" className="primary-action" onClick={() => void handleStartSession()} disabled={canStart === false || isConnecting}>
+                {controllerState.controllerStatus === 'completed' || controllerState.controllerStatus === 'ended_early' ? 'Start New Session' : 'Start Session'}
+              </button>
+            </div>
+            <p className="panel-copy">
+              Uses the real Web Bluetooth `heart_rate` service. Connection drops are recorded through the existing session-controller compromise flow.
+            </p>
+            {connectionMessage !== null ? <p className="panel-copy panel-copy--alert">{connectionMessage}</p> : null}
+          </article>
 
-        <article className="panel panel--runtime">
-          <h2>Runtime</h2>
-          <div className="runtime-grid">
-            <div>
+          <article className="panel panel--runtime">
+            <h2>Runtime</h2>
+            <div className="runtime-grid">
+              <div>
+                <span>Status</span>
+                <strong>{controllerState.controllerStatus}</strong>
+              </div>
+              <div>
+                <span>Connection</span>
+                <strong>{controllerState.hrConnectionStatus}</strong>
+              </div>
+              <div>
+                <span>Compromised</span>
+                <strong>{controllerState.isCompromised ? 'Yes' : 'No'}</strong>
+              </div>
+              <div>
+                <span>Comparison Ready</span>
+                <strong>{controllerState.comparisonEligible ? 'Yes' : 'No'}</strong>
+              </div>
+            </div>
+            <div className="action-stack action-stack--inline">
+              <button type="button" onClick={handlePause} disabled={controllerState.controllerStatus !== 'running'}>Pause</button>
+              <button type="button" onClick={handleResume} disabled={controllerState.controllerStatus !== 'paused'}>Resume</button>
+              <button type="button" onClick={() => void handleEndEarly()}>End Early</button>
+            </div>
+            <p className="panel-copy">
+              Previous comparison source: {controllerState.previousComparisonSessionId ?? 'none yet'}
+            </p>
+          </article>
+        </> : <article className="panel panel-wide panel--session-controls">
+          <div className="session-controls-head">
+            <div className="session-runtime-pill">
               <span>Status</span>
               <strong>{controllerState.controllerStatus}</strong>
             </div>
-            <div>
+            <div className="session-runtime-pill">
               <span>Connection</span>
               <strong>{controllerState.hrConnectionStatus}</strong>
             </div>
-            <div>
+            <div className="session-runtime-pill">
               <span>Compromised</span>
               <strong>{controllerState.isCompromised ? 'Yes' : 'No'}</strong>
             </div>
-            <div>
-              <span>Comparison Ready</span>
-              <strong>{controllerState.comparisonEligible ? 'Yes' : 'No'}</strong>
-            </div>
           </div>
-          <div className="action-stack action-stack--inline">
+          <div className="action-stack action-stack--inline action-stack--session">
             <button type="button" onClick={handlePause} disabled={controllerState.controllerStatus !== 'running'}>Pause</button>
             <button type="button" onClick={handleResume} disabled={controllerState.controllerStatus !== 'paused'}>Resume</button>
-            <button type="button" onClick={() => void handleEndEarly()} disabled={isSessionActive === false}>End Early</button>
+            <button type="button" onClick={() => void handleEndEarly()}>End Early</button>
           </div>
-          <p className="panel-copy">
-            Previous comparison source: {controllerState.previousComparisonSessionId ?? 'none yet'}
-          </p>
-        </article>
+        </article>}
 
         <article className="panel panel-wide panel--comparison">
           <h2>Live Comparison</h2>
@@ -721,10 +854,10 @@ export function WorkoutScreen({
                 <div className="comparison-chart-shell">
                   <div className="comparison-axis" aria-hidden="true">
                     {comparisonChart.guides.map((guide) => (
-                      <span key={guide.label}>{guide.label}</span>
+                      <span key={guide.label} style={{ top: String(guide.y) + '%' }}>{guide.label}</span>
                     ))}
                   </div>
-                  <div className="comparison-chart-frame">
+                  <div ref={comparisonPlotRef} className="comparison-chart-frame">
                     <svg className="comparison-chart" viewBox="0 0 100 100" role="img" aria-label="Current session heart-rate chart with comparison strip below" preserveAspectRatio="none">
                       {comparisonChart.guides.map((guide) => (
                         <line key={guide.label} x1="0" y1={guide.y} x2="100" y2={guide.y} stroke="rgba(255, 255, 255, 0.1)" strokeWidth="0.4" />
@@ -772,7 +905,7 @@ export function WorkoutScreen({
                   ))}
                 </div>
               </div>
-              <p className="panel-copy">Each bar is centered on the midpoint of a work interval. Up means the current round delta beat the previous session, down means it underperformed.</p>
+              <p className="panel-copy">Each bar is centered on the time its comparison becomes knowable. Up means the current round delta beat the previous session, down means it underperformed.</p>
             </>
           )}
           {demoFixture !== null ? <p className="panel-copy">Demo comparison fixture active via demo_comparison=1.</p> : null}
@@ -784,7 +917,94 @@ export function WorkoutScreen({
         <article className="panel panel-wide panel--history">
           <h2>History</h2>
           <div className="history-layout">
-            <div className="history-list">
+            <div className="history-detail">
+              {selectedHistorySession === null ? (
+                <p className="panel-copy">Choose a stored session to inspect its round metrics.</p>
+              ) : (
+                <>
+                  <p className="panel-copy">
+                    {formatSessionDate(selectedHistorySession.startedAt)}. {selectedHistorySession.status}. {selectedHistorySession.comparisonEligible ? 'Eligible for comparison.' : 'Not eligible for comparison.'}
+                  </p>
+                  {selectedHistoryChart === null ? null : <>
+                    <div className="hero-scrub-slot hero-scrub-slot--history" aria-live="polite">
+                      {selectedHistoryScrubDetail !== null ? <div className="hero-scrub-card hero-scrub-card--history">
+                        <strong>{selectedHistoryScrubDetail.timeLabel}</strong>
+                        <span>Round {selectedHistoryScrubDetail.roundNumber}</span>
+                        <span>{selectedHistoryScrubDetail.currentBpm === null ? 'No HR data' : 'BPM ' + formatDeltaValue(selectedHistoryScrubDetail.currentBpm)}</span>
+                        <span>Current {formatDeltaValue(selectedHistoryScrubDetail.currentDelta)} / Previous {formatDeltaValue(selectedHistoryScrubDetail.previousDelta)}</span>
+                        <span className={getDiffClassName({ roundIndex: selectedHistoryScrubDetail.roundIndex, currentDelta: selectedHistoryScrubDetail.currentDelta, previousDelta: selectedHistoryScrubDetail.previousDelta, diffDelta: selectedHistoryScrubDetail.diffDelta })}>{formatSignedDelta(selectedHistoryScrubDetail.diffDelta)}</span>
+                      </div> : null}
+                    </div>
+                    <div
+                      ref={historyComparisonInteractionRef}
+                      className="comparison-visual comparison-visual--history comparison-visual--interactive"
+                      onPointerDown={handleHistoryComparisonPointerDown as JSX.PointerEventHandler<HTMLDivElement>}
+                      onPointerMove={handleHistoryComparisonPointerMove as JSX.PointerEventHandler<HTMLDivElement>}
+                      onPointerEnter={handleHistoryComparisonPointerEnter as JSX.PointerEventHandler<HTMLDivElement>}
+                      onPointerLeave={handleHistoryComparisonPointerLeave as JSX.PointerEventHandler<HTMLDivElement>}
+                    >
+                      <div className="comparison-chart-shell">
+                        <div className="comparison-axis" aria-hidden="true">
+                          {selectedHistoryChart.guides.map((guide) => (
+                            <span key={guide.label} style={{ top: String(guide.y) + '%' }}>{guide.label}</span>
+                          ))}
+                        </div>
+                        <div ref={historyComparisonPlotRef} className="comparison-chart-frame">
+                          <svg className="comparison-chart" viewBox="0 0 100 100" role="img" aria-label="Selected session heart-rate chart with comparison strip below" preserveAspectRatio="none">
+                            {selectedHistoryChart.guides.map((guide) => (
+                              <line key={guide.label} x1="0" y1={guide.y} x2="100" y2={guide.y} stroke="rgba(255, 255, 255, 0.1)" strokeWidth="0.4" />
+                            ))}
+                            {selectedHistoryChart.currentPathSegments.map((segment, index) => (
+                              <polyline key={String(index)} points={segment} fill="none" stroke="#fff8de" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            ))}
+                            {selectedHistoryScrubDetail !== null ? <line x1={selectedHistoryScrubDetail.xPercent} y1="0" x2={selectedHistoryScrubDetail.xPercent} y2="100" stroke="rgba(120, 184, 255, 0.95)" strokeWidth="0.8" /> : null}
+                          </svg>
+                          <div className="comparison-rounds" aria-hidden="true">
+                            {selectedHistoryChart.timeLabels.map((label) => (
+                              <span key={label.label} style={{ left: String(label.xPercent) + '%' }}>{label.label}</span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="comparison-strip-shell comparison-strip-shell--history">
+                      <div className="comparison-strip-axis" aria-hidden="true">
+                        <span>+</span>
+                        <span>0</span>
+                        <span>-</span>
+                      </div>
+                      <div className="comparison-strip" aria-label="Selected session delta versus previous session by round midpoint">
+                        <div className="comparison-strip-baseline" />
+                        {selectedHistoryScrubDetail !== null ? <div className="comparison-strip-scrub-line" style={{ left: String(selectedHistoryScrubDetail.xPercent) + '%' }} /> : null}
+                        {selectedHistoryStripBars.map((bar) => (
+                          <div
+                            key={bar.roundIndex}
+                            className={bar.className}
+                            style={bar.style}
+                            title={bar.title}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    {selectedHistoryComparisonSession === null ? (
+                      <p className="panel-copy">No earlier comparison-eligible session exists for this historical workout, so only the session trace is shown.</p>
+                    ) : null}
+                  </>}
+                  <div className="history-stats-grid">
+                    {selectedHistoryStats.length === 0 ? (
+                      <p className="panel-copy">Interval stats will appear here once a session completes with analyzed rounds.</p>
+                    ) : selectedHistoryStats.map((stat) => (
+                      <div key={stat.roundIndex} className="history-stat-card">
+                        <span>Round {stat.roundIndex + 1}</span>
+                        <strong>{formatDeltaValue(stat.deltaBpm)}</strong>
+                        <small>Peak {formatDeltaValue(stat.peakBpm)} / Trough {formatDeltaValue(stat.troughBpm)}</small>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="history-list history-list--footer">
               {historySessions.length === 0 ? (
                 <p className="panel-copy">No sessions stored yet.</p>
               ) : historySessions.map((session) => (
@@ -799,28 +1019,6 @@ export function WorkoutScreen({
                   <span>{formatSessionBadge(session)}</span>
                 </button>
               ))}
-            </div>
-            <div className="history-detail">
-              {selectedHistorySession === null ? (
-                <p className="panel-copy">Choose a stored session to inspect its round metrics.</p>
-              ) : (
-                <>
-                  <p className="panel-copy">
-                    {formatSessionDate(selectedHistorySession.startedAt)}. {selectedHistorySession.status}. {selectedHistorySession.comparisonEligible ? 'Eligible for comparison.' : 'Not eligible for comparison.'}
-                  </p>
-                  <div className="history-stats-grid">
-                    {selectedHistoryStats.length === 0 ? (
-                      <p className="panel-copy">Interval stats will appear here once a session completes with analyzed rounds.</p>
-                    ) : selectedHistoryStats.map((stat) => (
-                      <div key={stat.roundIndex} className="history-stat-card">
-                        <span>Round {stat.roundIndex + 1}</span>
-                        <strong>{formatDeltaValue(stat.deltaBpm)}</strong>
-                        <small>Peak {formatDeltaValue(stat.peakBpm)} / Trough {formatDeltaValue(stat.troughBpm)}</small>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
             </div>
           </div>
         </article>
@@ -896,6 +1094,34 @@ function getStatusCopy(state: WorkoutSessionControllerState): string {
   return 'Select the work duration, connect a real monitor, and start a session. The screen now uses the Web Bluetooth adapter plus the existing controller and IndexedDB repositories.';
 }
 
+function getVisibleLiveComparisonRounds(
+  rounds: ComparisonRound[],
+  plan: WorkoutPlan | null,
+  elapsedSec: number
+): ComparisonRound[] {
+  if (plan === null) {
+    return rounds;
+  }
+
+  const workWindows = getWorkWindows(plan);
+  const visibleRoundIndexes = new Set<number>();
+
+  for (let index = 0; index < workWindows.length; index += 1) {
+    const workWindow = workWindows[index];
+    if (workWindow === undefined) {
+      continue;
+    }
+
+    const nextWorkWindow = workWindows[index + 1] ?? null;
+    const comparisonReadySec = nextWorkWindow?.endSec ?? plan.totalDurationSec;
+    if (elapsedSec >= comparisonReadySec) {
+      visibleRoundIndexes.add(workWindow.roundIndex);
+    }
+  }
+
+  return rounds.filter((round) => visibleRoundIndexes.has(round.roundIndex));
+}
+
 function getDiffClassName(round: ComparisonRound): string {
   if (round.diffDelta === null) {
     return 'comparison-diff comparison-diff--neutral';
@@ -928,15 +1154,19 @@ function createComparisonStripBars(
   rounds: ComparisonRound[],
   timing: ComparisonChartTiming | null,
   maxElapsedSec: number,
-  maxComparisonDiff: number
+  maxComparisonDiff: number,
+  currentSamples: HeartRateSample[],
+  currentSessionStartedAtMs: number | null
 ): Array<{ roundIndex: number; className: string; style: CSSProperties; title: string }> {
   if (timing === null || maxElapsedSec === 0) {
     return [];
   }
 
-  return rounds.map((round) => {
-    const midpointSec = getRoundStartSec(round.roundIndex, timing) + (timing.workDurationSec / 2);
-    const xPercent = getElapsedX(midpointSec, maxElapsedSec);
+  return rounds
+    .filter((round) => round.currentDelta !== null && round.previousDelta !== null && round.diffDelta !== null)
+    .map((round) => {
+    const comparisonDisplaySec = getRoundComparisonDisplaySec(round.roundIndex, timing, currentSamples, currentSessionStartedAtMs);
+    const xPercent = Math.max(1, Math.min(99, getElapsedX(comparisonDisplaySec, maxElapsedSec)));
     const magnitude = round.diffDelta === null || maxComparisonDiff === 0
       ? 0
       : Math.abs(round.diffDelta) / maxComparisonDiff;
@@ -993,6 +1223,27 @@ function formatSignedDelta(value: number | null): string {
   return value > 0 ? '+' + String(value) : String(value);
 }
 
+function getPreviousComparisonSessionForHistory(
+  sessions: SessionRecord[],
+  selectedSessionId: string | null
+): SessionRecord | null {
+  if (selectedSessionId === null) {
+    return null;
+  }
+
+  const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? null;
+  if (selectedSession === null) {
+    return null;
+  }
+
+  const selectedStartedAtMs = Date.parse(selectedSession.startedAt);
+  return sessions
+    .filter((session) => session.id !== selectedSession.id)
+    .filter((session) => session.comparisonEligible)
+    .filter((session) => Date.parse(session.startedAt) < selectedStartedAtMs)
+    .sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt))[0] ?? null;
+}
+
 function formatSessionBadge(session: SessionRecord): string {
   if (session.comparisonEligible) {
     return 'comparison ready';
@@ -1045,6 +1296,7 @@ interface ComparisonChartTiming {
   warmupSec: number;
   workDurationSec: number;
   restsSec: number[];
+  cooldownSec: number;
   totalDurationSec: number;
 }
 
@@ -1098,12 +1350,9 @@ function createComparisonChartModel(
 
   const minValue = Math.min(...allValues);
   const maxValue = Math.max(...allValues);
-  const rawPadding = Math.max(4, Math.ceil((maxValue - minValue) * 0.12));
-  const rawMin = minValue - rawPadding;
-  const rawMax = maxValue + rawPadding;
-  const yStep = getNiceBpmStep((rawMax - rawMin) / 3);
-  const chartMin = Math.floor(rawMin / yStep) * yStep;
-  const chartMax = Math.ceil(rawMax / yStep) * yStep;
+  const chartMin = Math.floor(minValue / 10) * 10;
+  const chartMaxBase = Math.ceil(maxValue / 10) * 10;
+  const chartMax = chartMaxBase === chartMin ? chartMin + 10 : chartMaxBase;
 
   return {
     currentPathSegments: buildLivePathSegments(liveSeries, chartMin, chartMax, maxElapsedSec),
@@ -1217,6 +1466,7 @@ function getChartTimingFromWorkoutPlan(plan: WorkoutPlan | null): ComparisonChar
     warmupSec: plan.warmupSec,
     workDurationSec: plan.workDurationSec,
     restsSec: plan.actualRestsSec,
+    cooldownSec: plan.cooldownSec,
     totalDurationSec: plan.totalDurationSec
   };
 }
@@ -1230,6 +1480,7 @@ function getChartTimingFromSession(session: SessionRecord | null): ComparisonCha
     warmupSec: session.warmupSec,
     workDurationSec: session.workDurationSec,
     restsSec: session.actualRestsSec,
+    cooldownSec: session.cooldownBaseSec,
     totalDurationSec: session.totalPlannedDurationSec
   };
 }
@@ -1243,6 +1494,79 @@ function getRoundStartSec(roundIndex: number, timing: ComparisonChartTiming): nu
   }
 
   return elapsedSec;
+}
+
+function getRoundComparisonDisplaySec(
+  roundIndex: number,
+  timing: ComparisonChartTiming,
+  samples: HeartRateSample[],
+  sessionStartedAtMs: number | null
+): number {
+  const nextRoundIndex = roundIndex + 1;
+  if (nextRoundIndex >= timing.restsSec.length + 1) {
+    return getEstimatedFinalComparisonDisplaySec(timing, samples, sessionStartedAtMs);
+  }
+
+  return getRoundStartSec(nextRoundIndex, timing) + timing.workDurationSec;
+}
+
+function getEstimatedFinalComparisonDisplaySec(
+  timing: ComparisonChartTiming,
+  samples: HeartRateSample[],
+  sessionStartedAtMs: number | null
+): number {
+  if (sessionStartedAtMs === null) {
+    return timing.totalDurationSec;
+  }
+
+  const roundTwelveIndex = timing.restsSec.length - 1;
+  const roundElevenIndex = roundTwelveIndex - 1;
+  if (roundElevenIndex < 0) {
+    return timing.totalDurationSec;
+  }
+
+  const roundElevenTrough = getRoundTroughSampleElapsedSec(roundElevenIndex, timing, samples, sessionStartedAtMs);
+  const roundTwelveTrough = getRoundTroughSampleElapsedSec(roundTwelveIndex, timing, samples, sessionStartedAtMs);
+  if (roundElevenTrough === null || roundTwelveTrough === null) {
+    return timing.totalDurationSec;
+  }
+
+  const troughGapSec = Math.max(1, roundTwelveTrough - roundElevenTrough);
+  return roundTwelveTrough + troughGapSec;
+}
+
+function getRoundTroughSampleElapsedSec(
+  roundIndex: number,
+  timing: ComparisonChartTiming,
+  samples: HeartRateSample[],
+  sessionStartedAtMs: number
+): number | null {
+  const recoveryStartSec = getRoundStartSec(roundIndex, timing) + timing.workDurationSec;
+  const nextWorkStartSec = getRoundStartSec(roundIndex + 1, timing);
+  const nextWorkEndSec = nextWorkStartSec + timing.workDurationSec;
+  const troughSample = getMinTimedHeartRateSample(samples, sessionStartedAtMs, recoveryStartSec, nextWorkEndSec);
+  return troughSample?.elapsedSec ?? null;
+}
+
+function getMinTimedHeartRateSample(
+  samples: HeartRateSample[],
+  sessionStartedAtMs: number,
+  startSec: number,
+  endSec: number
+): { elapsedSec: number; bpm: number } | null {
+  const windowSamples = samples
+    .filter((sample) => sample.isMissing === false && sample.bpm !== null)
+    .map((sample) => ({
+      elapsedSec: (sample.timestampMs - sessionStartedAtMs) / 1000,
+      bpm: sample.bpm as number
+    }))
+    .filter((sample) => sample.elapsedSec >= startSec && sample.elapsedSec < endSec);
+
+  if (windowSamples.length === 0) {
+    return null;
+  }
+
+  return windowSamples.reduce((lowest, sample) => sample.bpm < lowest.bpm ? sample : lowest);
 }
 
 function getChartDurationSec(timing: ComparisonChartTiming | null, stats: ChartIntervalStat[]): number {
@@ -1281,15 +1605,15 @@ function createComparisonScrubDetail(
   const hasGapAtScrubPosition = isGapAtElapsedSec(liveSeries, scrubElapsedSec);
   const nearestSample = hasGapAtScrubPosition ? null : getNearestChartSample(liveSamples, scrubElapsedSec);
   let nearestRound = rounds[0]!;
-  let nearestMidpointSec = getRoundStartSec(nearestRound.roundIndex, timing) + (timing.workDurationSec / 2);
-  let nearestDistance = Math.abs(nearestMidpointSec - scrubElapsedSec);
+  let nearestDisplaySec = getRoundComparisonDisplaySec(nearestRound.roundIndex, timing, currentSamples, currentSessionStartedAtMs);
+  let nearestDistance = Math.abs(nearestDisplaySec - scrubElapsedSec);
 
   for (const round of rounds) {
-    const midpointSec = getRoundStartSec(round.roundIndex, timing) + (timing.workDurationSec / 2);
-    const distance = Math.abs(midpointSec - scrubElapsedSec);
+    const displaySec = getRoundComparisonDisplaySec(round.roundIndex, timing, currentSamples, currentSessionStartedAtMs);
+    const distance = Math.abs(displaySec - scrubElapsedSec);
     if (distance < nearestDistance) {
       nearestRound = round;
-      nearestMidpointSec = midpointSec;
+      nearestDisplaySec = displaySec;
       nearestDistance = distance;
     }
   }
@@ -1385,11 +1709,11 @@ function formatElapsedClock(totalSec: number): string {
 
 function getChartY(value: number, chartMin: number, chartMax: number): number {
   if (chartMax <= chartMin) {
-    return 46;
+    return 50;
   }
 
   const ratio = (value - chartMin) / (chartMax - chartMin);
-  return 84 - (ratio * 68);
+  return 100 - (ratio * 100);
 }
 
 function isNumber(value: number | null): value is number {
