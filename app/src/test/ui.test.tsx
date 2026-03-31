@@ -135,8 +135,8 @@ describe('WorkoutScreen', () => {
 
     fireEvent.click(startButton);
 
-    expect(await screen.findByText('The session is live. Timer state, current BPM, live round deltas, and previous-session comparison are being driven from the session controller.')).toBeTruthy();
-    expect((await screen.findAllByText('running')).length).toBeGreaterThan(0);
+    expect(await screen.findByText('The session is live. Timer state, current BPM, live round deltas, and previous-session comparison are being driven from the session controller.', {}, { timeout: 5000 })).toBeTruthy();
+    expect((await screen.findAllByText('running', {}, { timeout: 5000 })).length).toBeGreaterThan(0);
   });
 
   it('renders a broken live trace when heart-rate coverage drops mid-session', async () => {
@@ -165,6 +165,8 @@ describe('WorkoutScreen', () => {
     fireEvent.click(startButton);
     expect(monitor).not.toBeNull();
 
+    await screen.findByText('The session is live. Timer state, current BPM, live round deltas, and previous-session comparison are being driven from the session controller.', {}, { timeout: 5000 });
+
     await act(async () => {
       nowMs += 301_000;
       await monitor!.emitHeartRateSample(142);
@@ -179,7 +181,7 @@ describe('WorkoutScreen', () => {
     await waitFor(() => {
       const chart = document.querySelector('.comparison-chart');
       expect(chart?.querySelectorAll('polyline').length).toBeGreaterThan(1);
-    });
+    }, { timeout: 5000 });
   });
 
 });

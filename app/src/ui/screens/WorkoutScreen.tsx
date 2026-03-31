@@ -93,6 +93,7 @@ export function WorkoutScreen({
   const [demoFixture, setDemoFixture] = useState<DemoComparisonFixture | null>(null);
   const [scrubXPercent, setScrubXPercent] = useState<number | null>(null);
   const [historyScrubXPercent, setHistoryScrubXPercent] = useState<number | null>(null);
+  const [startupCountdownSec, setStartupCountdownSec] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -410,11 +411,22 @@ export function WorkoutScreen({
 
   async function handleStartSession(): Promise<void> {
     const controller = controllerRef.current;
-    if (controller === null) {
+    if (controller === null || startupCountdownSec !== null) {
       return;
     }
 
     await ensureAudioReady();
+    setStartupCountdownSec(3);
+
+    for (const countdownSec of [3, 2, 1]) {
+      setStartupCountdownSec(countdownSec);
+      playTone(1760, 0.1);
+      await delay(1000);
+    }
+
+    playTone(1760, 0.8);
+    await delay(850);
+    setStartupCountdownSec(null);
     const startedAtMs = now();
     setSessionStartAtMs(startedAtMs);
     setPausedAccumulatedMs(0);
@@ -495,14 +507,17 @@ export function WorkoutScreen({
   const isSessionActive = controllerState.controllerStatus === 'running' || controllerState.controllerStatus === 'paused';
   const canStart = bootstrapStatus === 'ready'
     && controllerState.hrConnectionStatus === 'connected'
-    && isSessionActive === false;
+    && isSessionActive === false
+    && startupCountdownSec === null;
   const roundLabel = controllerState.currentRoundIndex === null
     ? (controllerState.currentPhaseType === 'cooldown' ? 'Cooldown' : 'Warmup')
     : String(controllerState.currentRoundIndex + 1) + ' / ' + String(ROUNDS_PLANNED);
   const progressPercent = controllerState.workoutPlan === null || controllerState.workoutPlan.totalDurationSec === 0
     ? 0
     : Math.min(100, (controllerState.elapsedSec / controllerState.workoutPlan.totalDurationSec) * 100);
-  const phaseClassName = controllerState.currentPhaseType === null ? 'phase--idle' : 'phase--' + controllerState.currentPhaseType;
+  const phaseClassName = startupCountdownSec !== null
+    ? 'phase--work'
+    : controllerState.currentPhaseType === null ? 'phase--idle' : 'phase--' + controllerState.currentPhaseType;
   const statusCopy = getStatusCopy(controllerState);
   const effectiveCurrentIntervalStats = demoFixture === null ? controllerState.currentIntervalStats : demoFixture.currentStats;
   const effectiveCurrentHeartRateSamples = demoFixture === null ? controllerState.currentHeartRateSamples : demoFixture.currentSamples;
@@ -615,20 +630,20 @@ export function WorkoutScreen({
       return;
     }
 
-    if (phaseRemainingSec > 0 && phaseRemainingSec <= 4 && lastCountdownBeepSecRef.current !== phaseRemainingSec) {
-      playTone(1760, 0.1);
-      lastCountdownBeepSecRef.current = phaseRemainingSec;
-    } else if (phaseRemainingSec > 4) {
-      lastCountdownBeepSecRef.current = null;
-    }
-
     const previousPhaseType = previousPhaseTypeRef.current;
-    if (
+    const hasPhaseTransition = (
       previousPhaseType !== null
       && controllerState.currentPhaseType !== null
       && previousPhaseType !== controllerState.currentPhaseType
-    ) {
+    );
+
+    if (hasPhaseTransition) {
       playTone(1760, 0.4);
+      lastCountdownBeepSecRef.current = null;
+    } else if (phaseRemainingSec > 0 && phaseRemainingSec <= 3 && lastCountdownBeepSecRef.current !== phaseRemainingSec) {
+      playTone(1760, 0.1);
+      lastCountdownBeepSecRef.current = phaseRemainingSec;
+    } else if (phaseRemainingSec > 3) {
       lastCountdownBeepSecRef.current = null;
     }
 
@@ -725,7 +740,7 @@ export function WorkoutScreen({
     <main className="screen">
       <section className={'hero-card hero-card--session ' + phaseClassName + (isSessionActive ? ' hero-card--running' : '')}>
         <p className="eyebrow">{controllerState.connectedDeviceName ?? 'No HR monitor connected'}</p>
-        <h1 className="timer">{formatClock(phaseRemainingSec)}</h1>
+        <h1 className="timer">{startupCountdownSec === null ? formatClock(phaseRemainingSec) : '00:0' + String(startupCountdownSec)}</h1>
         <div className="hero-scrub-slot" aria-live="polite">
           {scrubDetail !== null && isScrubberEnabled ? <div className="hero-scrub-card">
             <strong>{scrubDetail.timeLabel}</strong>
@@ -735,7 +750,7 @@ export function WorkoutScreen({
             <span className={getDiffClassName({ roundIndex: scrubDetail.roundIndex, currentDelta: scrubDetail.currentDelta, previousDelta: scrubDetail.previousDelta, diffDelta: scrubDetail.diffDelta })}>{formatSignedDelta(scrubDetail.diffDelta)}</span>
           </div> : null}
         </div>
-        <p className={'phase ' + phaseClassName}>{getPhaseHeading(controllerState.currentPhaseType, controllerState.controllerStatus)}</p>
+        <p className={'phase ' + phaseClassName}>{startupCountdownSec === null ? getPhaseHeading(controllerState.currentPhaseType, controllerState.controllerStatus) : 'Starting'}</p>
         <p className="copy">{statusCopy}</p>
         <div className="hero-metrics">
           <div className="metric-pill metric-pill--round">
@@ -773,11 +788,13 @@ export function WorkoutScreen({
               </button>
             </div>
             <div className="action-stack">
-              <button type="button" className="primary-action" onClick={() => void handleConnectToggle()} disabled={isConnecting}>
+              <button type="button" className="primary-action" onClick={() => void handleConnectToggle()} disabled={isConnecting || startupCountdownSec !== null}>
                 {getConnectionActionLabel(controllerState, isConnecting)}
               </button>
               <button type="button" className="primary-action" onClick={() => void handleStartSession()} disabled={canStart === false || isConnecting}>
-                {controllerState.controllerStatus === 'completed' || controllerState.controllerStatus === 'ended_early' ? 'Start New Session' : 'Start Session'}
+                {startupCountdownSec !== null
+                  ? 'Starting in ' + String(startupCountdownSec)
+                  : controllerState.controllerStatus === 'completed' || controllerState.controllerStatus === 'ended_early' ? 'Start New Session' : 'Start Session'}
               </button>
             </div>
             <p className="panel-copy">
@@ -1038,6 +1055,12 @@ function getActivePhase(state: WorkoutSessionControllerState): PhaseSegment | nu
     && state.elapsedSec >= phase.startSec
     && state.elapsedSec < phase.endSec
   ) ?? null;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 function getConnectionActionLabel(state: WorkoutSessionControllerState, isConnecting: boolean): string {
