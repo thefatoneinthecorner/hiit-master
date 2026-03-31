@@ -497,7 +497,7 @@ export function WorkoutScreen({
     && controllerState.hrConnectionStatus === 'connected'
     && isSessionActive === false;
   const roundLabel = controllerState.currentRoundIndex === null
-    ? 'Warmup / Cooldown'
+    ? (controllerState.currentPhaseType === 'cooldown' ? 'Cooldown' : 'Warmup')
     : String(controllerState.currentRoundIndex + 1) + ' / ' + String(ROUNDS_PLANNED);
   const progressPercent = controllerState.workoutPlan === null || controllerState.workoutPlan.totalDurationSec === 0
     ? 0
@@ -914,7 +914,7 @@ export function WorkoutScreen({
           ) : null}
         </article>
 
-        <article className="panel panel-wide panel--history">
+        {controllerState.hrConnectionStatus === 'connected' ? null : <article className="panel panel-wide panel--history">
           <h2>History</h2>
           <div className="history-layout">
             <div className="history-detail">
@@ -1021,7 +1021,7 @@ export function WorkoutScreen({
               ))}
             </div>
           </div>
-        </article>
+        </article>}
       </section>
     </main>
   );

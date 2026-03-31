@@ -257,6 +257,11 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+.metric-pill--bpm strong,
+.metric-pill--total strong {
+  font-size: 1.5rem;
+}
+
 .hero-card--running .metric-pill strong {
   font-size: 1.5rem;
 }
