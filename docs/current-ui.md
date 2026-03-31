@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document describes the workout UI behavior that is implemented in the current app build. It is intentionally narrower than the product spec: it records what exists now, not the full version 1 target.
+This document describes the workout UI behavior that is implemented in the current app build. It records what exists now, including the current live-test bug backlog.
 
 ## Current Status
 
@@ -12,8 +12,10 @@ The app now has a working end-to-end workout screen built on top of:
 - IndexedDB-backed storage repositories
 - a `WorkoutSessionController` for timer and session state
 - a Web Bluetooth heart-rate monitor adapter using the standard `heart_rate` service
+- Web Audio cues for countdown and phase transitions
+- screen wake-lock handling while a session is running when the browser supports it
 
-The UI is usable as a real session runner and as a demo environment for comparison design work.
+The UI is usable as a real session runner and as a demo environment for comparison design work, but recent live testing exposed several readability and layout issues that still need correction.
 
 ## Workout Screen
 
@@ -25,6 +27,8 @@ The main workout screen currently includes:
 - live timer state for warmup, work, rest, cooldown, paused, completed, and ended-early states
 - live BPM display
 - pause, resume, and end-early controls
+- a current-session heart-rate chart on a full-session time axis
+- a compact delta strip aligned to the same time scale
 - a completed-state workflow that stays on the workout screen instead of navigating away
 
 ## Bluetooth Behavior
@@ -42,16 +46,30 @@ Current limitation:
 
 - this has browser-level coverage through the Web Bluetooth adapter and test coverage for parsing, but hardware validation still depends on manual browser/device testing
 
+## Audio And Wake Lock
+
+Implemented behavior:
+
+- the app primes a Web Audio context from user interaction
+- the app plays short final-countdown beeps near the end of a running phase
+- the app plays a longer transition tone at phase changes
+- the app requests a screen wake lock while the session is running when the browser supports it
+- the app releases wake lock when the session is no longer running and attempts to reacquire it when the page becomes visible again
+
+Current limitation:
+
+- cue timing and volume still need live-device tuning
+- wake-lock behavior still depends on browser and device support
+
 ## Comparison Mode
 
 The live comparison view currently uses:
 
-- a current-session heart-rate chart plotted on a full-session time axis
-- round-derived sawtooth modeling rather than a fully continuous live sample trace
+- a current-session heart-rate chart plotted from live samples on a full-session time axis
 - lag-aware round analysis where peaks and troughs intentionally span phase boundaries
 - a compact delta strip aligned to the same time scale
 - per-round delta comparison against the immediately previous comparison-eligible session
-- a scrubber that snaps to the nearest work-interval midpoint
+- a scrubber shared across the chart and delta strip
 
 Current chart behavior:
 
@@ -59,6 +77,7 @@ Current chart behavior:
 - the previous session is used for comparison metrics, not as an overlaid line on the chart
 - the comparison strip encodes `currentDelta - previousDelta`
 - positive deltas render above the strip baseline and negative deltas render below it
+- explicit missing-heart-rate periods render as visible gaps in the current trace
 
 ## Scrubber
 
@@ -68,18 +87,20 @@ Implemented behavior:
 - the scrubber shows a vertical guide line in the chart and strip
 - scrub details are rendered in the timer card rather than over the graph
 - scrub inspection is disabled while the timer is actively running
+- when the scrubber is over a dropout gap, the card is intended to show a no-data state rather than implying a continuous sample
 
 Current detail content:
 
 - elapsed time
 - round number
+- current BPM when available
 - current delta
 - previous delta
 - signed difference
 
 ## Portrait Phone Layout
 
-There is now a portrait-phone-specific condensed mode.
+There is a portrait-phone-specific condensed mode.
 
 When the viewport is narrow and portrait-oriented, the UI collapses to:
 
@@ -116,7 +137,7 @@ This mode currently:
 
 - seeds a previous completed comparison-eligible session into storage
 - uses fixed peak and trough values for both current and previous sessions
-- drives the comparison chart and delta strip without requiring live workout capture
+- generates a synthetic current-session trace for chart and comparison design work
 
 This mode is intended for visualization work, not production session capture.
 
@@ -124,34 +145,31 @@ This mode is intended for visualization work, not production session capture.
 
 Important gaps between the current UI and the intended product:
 
-- the heart-rate chart is still modeled from lag-aware per-round peak and trough summaries rather than plotted from real live sample data
-- scrubber detail is round-based, not sample-based
-- warmup and cooldown graph treatment is still sparse and not yet visually expressive
 - export actions are not yet surfaced in the current workout UI
-- suspected bug: the comparison delta may appear too early, including at the start of the first work period, and needs verification against live workout data
-- suspected bug: audio cue timing may include one extra beep, so countdown and transition cue counts need live verification
-- suspected bug: the live graph can occasionally jump to an implausible flat line around 300 BPM before recovering, which suggests a transient sample parsing, scaling, or rendering fault
-- suspected bug: there are no beeps and no 3-2-1 countdown at the very start of warmup, which makes session start feel silent and abrupt
-- suspected bug: the live BPM readout can become illegible in the active-session layout
-- suspected bug: the rounds readout can become illegible in the active-session layout
-- suspected bug: the heart-rate graph stroke appears too heavy during live use
-- suspected bug: the countdown timer is not visually centered in its panel
-- suspected bug: the delta bars can scroll off the bottom of the viewport in live use
-- suspected bug: the beeps are too quiet for reliable use during a real workout
-- suspected bug: the graph view can become vertically squashed between roughly 200 BPM and the low 20s, reducing readability
-- suspected UX issue: once a session is running, the setup and runtime panels provide little value and consume too much space
-- suspected bug: the rounds panel layout is poor in real use and needs redesign
 - the portrait-phone layout is functional but still needs spacing and hierarchy refinement
 - historical correction tools described in prototype notes are not implemented
+- suspected bug: the comparison delta may appear too early, including at the start of the first work period, and needs verification against live workout data
+- suspected bug: audio cue timing may include one extra beep, so countdown and transition cue counts need live verification
+- suspected bug: there are no beeps and no 3-2-1 countdown at the very start of warmup, which makes session start feel silent and abrupt
+- suspected bug: the beeps are too quiet for reliable use during a real workout
+- suspected bug: the live BPM readout can become illegible in the active-session layout
+- suspected bug: the rounds readout can become illegible in the active-session layout
+- suspected bug: the countdown timer is not visually centered in its panel
+- suspected bug: the rounds panel layout is poor in real use and needs redesign
+- suspected UX issue: once a session is running, the setup and runtime panels provide little value and consume too much space
+- suspected bug: the heart-rate graph stroke appears too heavy during live use
+- suspected bug: the graph view can become vertically squashed between roughly 200 BPM and the low 20s, reducing readability
+- suspected bug: the delta bars can scroll off the bottom of the viewport in live use
+- suspected bug: the live graph can occasionally jump to an implausible flat line around 300 BPM before recovering, which suggests a transient sample parsing, scaling, or rendering fault
 
 ## Suggested Next UI Work
 
-The most sensible next UI feature is:
+The most sensible next UI task is a live-test bugfix pass focused on readability and active-session layout.
 
-- replace the modeled chart trace with real heart-rate sample plotting for the current session
+Highest-priority follow-up items:
 
-After that:
-
-- upgrade the scrubber to inspect real samples while still showing round comparison context
-- improve portrait-phone layout polish
-- decide whether completed-session review should surface more detail by default or remain compact
+- fix timer, BPM, and rounds readability on phone-sized screens
+- simplify the running-session layout so low-value setup/runtime panels do not dominate the screen
+- correct chart scaling, stroke weight, and delta-strip overflow issues
+- tune audio cue timing and volume, including startup countdown behavior
+- investigate the transient 300 BPM graph fault and the early-delta display issue

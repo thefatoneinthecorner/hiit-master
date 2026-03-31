@@ -167,6 +167,6 @@ The product needs to serve both technical and non-technical analysis workflows.
 The most important remaining decisions are:
 
 1. whether the current compact comparison strip plus scrubber is the final mobile comparison pattern or still needs a different visual encoding
-2. when to replace the modeled sawtooth chart with real live heart-rate sample plotting
-3. whether warmup and cooldown should stay visually sparse or receive explicit rendered traces
-4. what level of completed-session detail should surface by default on phone-sized screens
+2. how aggressive the running-session layout simplification should be on phone-sized screens once setup and runtime panels are deprioritized
+3. how audio cues should behave at session start, during final countdowns, and at phase transitions once live-device tuning is complete
+4. what vertical scaling and outlier-handling rule the live graph should use so it remains readable without hiding real spikes
