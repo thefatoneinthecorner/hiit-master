@@ -1283,8 +1283,8 @@ function createComparisonStripBars(
       ? 0
       : Math.abs(round.diffDelta) / maxComparisonDiff;
     const heightPercent = round.diffDelta === null
-      ? 10
-      : Math.max(10, magnitude * 48);
+      ? 8
+      : Math.max(4, magnitude * 48);
     const style: CSSProperties = {
       left: String(xPercent) + '%',
       height: String(heightPercent) + '%'

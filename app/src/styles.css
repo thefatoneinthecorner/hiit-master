@@ -722,7 +722,7 @@ button:disabled {
 .comparison-strip-bar {
   position: absolute;
   width: 10px;
-  border-radius: 999px;
+  border-radius: 0;
   margin-left: -0.5px;
 }
 
@@ -737,7 +737,7 @@ button:disabled {
 .comparison-strip-bar--neutral {
   width: 8px;
   height: 8px;
-  border-radius: 999px;
+  border-radius: 0;
   background: rgba(142, 164, 188, 0.8);
 }
 
