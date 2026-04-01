@@ -34,13 +34,6 @@ body {
   min-height: 100vh;
 }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
-
 button {
   border: 0;
   border-radius: 16px;
@@ -455,6 +448,12 @@ button:disabled {
   gap: 12px;
 }
 
+.history-mobile-actions {
+  display: none;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .history-stats-grid {
   display: grid;
   gap: 12px;
@@ -847,6 +846,29 @@ button:disabled {
 
   .panel--setup button {
     padding: 0.8rem 0.9rem;
+  }
+
+  .screen--mobile-history .hero-card--session,
+  .screen--mobile-history .panel--setup,
+  .screen--mobile-history .panel--comparison {
+    display: none;
+  }
+
+  .screen--mobile-history .panel--history {
+    display: block;
+  }
+
+  .screen--mobile-history {
+    touch-action: pan-y;
+  }
+
+  .screen--mobile-history .history-mobile-actions {
+    display: grid;
+    margin-bottom: 10px;
+  }
+
+  .screen--mobile-history .panel--history {
+    touch-action: pan-y;
   }
 
   .panel.panel--comparison {

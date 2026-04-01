@@ -57,6 +57,26 @@ interface WakeLockSentinelLike {
   release: () => Promise<void>;
 }
 
+interface TouchSwipeState {
+  startX: number;
+  startY: number;
+  isIgnored: boolean;
+  pointerId: number | null;
+}
+
+function getSwipeDebugTargetLabel(target: EventTarget | null): string {
+  if (!(target instanceof HTMLElement)) {
+    return 'unknown';
+  }
+
+  return target.className || target.tagName.toLowerCase();
+}
+
+function logSwipeDebug(message: string): string {
+  console.info('[swipe-debug]', message);
+  return message;
+}
+
 export function WorkoutScreen({
   storageFactory = createStorageRepositories,
   monitorFactory = createWebBluetoothHeartRateMonitor,
@@ -69,6 +89,7 @@ export function WorkoutScreen({
   const comparisonPlotRef = useRef<HTMLDivElement | null>(null);
   const historyComparisonInteractionRef = useRef<HTMLDivElement | null>(null);
   const historyComparisonPlotRef = useRef<HTMLDivElement | null>(null);
+  const historySwipeRef = useRef<TouchSwipeState | null>(null);
   const isTickInFlightRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioDestinationRef = useRef<AudioNode | null>(null);
@@ -95,6 +116,7 @@ export function WorkoutScreen({
   const [scrubXPercent, setScrubXPercent] = useState<number | null>(null);
   const [historyScrubXPercent, setHistoryScrubXPercent] = useState<number | null>(null);
   const [startupCountdownSec, setStartupCountdownSec] = useState<number | null>(null);
+  const [mobileHistoryMode, setMobileHistoryMode] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -481,6 +503,26 @@ export function WorkoutScreen({
     await refreshHistory();
   }
 
+  function navigateHistoryByOffset(offset: number): void {
+    if (offset === 0 || historySessions.length === 0 || selectedHistorySessionId === null) {
+      return;
+    }
+
+    const currentIndex = historySessions.findIndex((session) => session.id === selectedHistorySessionId);
+    if (currentIndex === -1) {
+      return;
+    }
+
+    const nextIndex = Math.max(0, Math.min(historySessions.length - 1, currentIndex + offset));
+    if (nextIndex === currentIndex) {
+      return;
+    }
+
+    setMobileHistoryMode(true);
+    setSelectedHistorySessionId(historySessions[nextIndex]?.id ?? null);
+    setHistoryScrubXPercent(null);
+  }
+
   async function handleDeleteHistorySession(sessionId: string): Promise<void> {
     const storage = storageRef.current;
     if (storage === null || deletingHistorySessionId !== null) {
@@ -615,6 +657,7 @@ export function WorkoutScreen({
   const showSetupRuntimePanels = isSessionActive === false;
   const selectedHistorySession = historySessions.find((session) => session.id === selectedHistorySessionId) ?? null;
   const selectedHistoryComparisonSession = getPreviousComparisonSessionForHistory(historySessions, selectedHistorySessionId);
+  const showMobileHistoryMode = isPortraitPhone && mobileHistoryMode && isSessionActive === false && selectedHistorySession !== null;
   const selectedHistoryTiming = getChartTimingFromSession(selectedHistorySession);
   const selectedHistoryPreviousTiming = getChartTimingFromSession(selectedHistoryComparisonSession);
   const selectedHistoryComparisonRounds = createComparisonRounds(selectedHistoryStats, selectedHistoryPreviousStats);
@@ -771,8 +814,109 @@ export function WorkoutScreen({
     setHistoryScrubXPercent(null);
   }
 
+  function handleHistorySwipeTouchStart(event: TouchEvent): void {
+    if (isPortraitPhone === false) {
+      historySwipeRef.current = null;
+      return;
+    }
+
+    const touch = event.touches[0];
+    const target = event.target;
+    const isIgnored = target instanceof HTMLElement
+      && target.closest('button, a, input, select, textarea, label, .comparison-visual, .comparison-strip-shell, .comparison-chart-frame, .comparison-strip') !== null;
+
+    historySwipeRef.current = touch === undefined
+      ? null
+      : { startX: touch.clientX, startY: touch.clientY, isIgnored, pointerId: null };
+  }
+
+  function handleHistorySwipePointerDown(event: PointerEvent): void {
+    if (isPortraitPhone === false || event.pointerType === 'touch') {
+      return;
+    }
+
+    const target = event.target;
+    const isIgnored = target instanceof HTMLElement
+      && target.closest('button, a, input, select, textarea, label, .comparison-visual, .comparison-strip-shell, .comparison-chart-frame, .comparison-strip') !== null;
+
+    historySwipeRef.current = { startX: event.clientX, startY: event.clientY, isIgnored, pointerId: event.pointerId };
+  }
+
+  function handleHistorySwipeTouchMove(event: TouchEvent): void {
+    const swipe = historySwipeRef.current;
+    if (swipe === null || swipe.isIgnored) {
+      return;
+    }
+
+    const touch = event.touches[0];
+    if (touch === undefined) {
+      return;
+    }
+
+    const deltaX = touch.clientX - swipe.startX;
+    const deltaY = touch.clientY - swipe.startY;
+    if (Math.abs(deltaX) > Math.abs(deltaY) * 1.2 && Math.abs(deltaX) > 24) {
+      event.preventDefault();
+    }
+  }
+
+  function commitHistorySwipe(deltaX: number, deltaY: number): void {
+    if (Math.abs(deltaX) < 56 || Math.abs(deltaX) < Math.abs(deltaY) * 1.3) {
+      return;
+    }
+
+    navigateHistoryByOffset(deltaX < 0 ? 1 : -1);
+  }
+
+  function handleHistorySwipeTouchEnd(event: TouchEvent): void {
+    const swipe = historySwipeRef.current;
+    historySwipeRef.current = null;
+    if (swipe === null || swipe.isIgnored || isPortraitPhone === false) {
+      return;
+    }
+
+    const touch = event.changedTouches[0];
+    if (touch === undefined) {
+      return;
+    }
+
+    commitHistorySwipe(touch.clientX - swipe.startX, touch.clientY - swipe.startY);
+  }
+
+  function handleHistorySwipePointerMove(event: PointerEvent): void {
+    const swipe = historySwipeRef.current;
+    if (swipe === null || swipe.isIgnored || swipe.pointerId !== event.pointerId || event.pointerType === 'touch') {
+      return;
+    }
+
+    const deltaX = event.clientX - swipe.startX;
+    const deltaY = event.clientY - swipe.startY;
+    if (Math.abs(deltaX) > Math.abs(deltaY) * 1.2 && Math.abs(deltaX) > 24) {
+      event.preventDefault();
+    }
+  }
+
+  function handleHistorySwipePointerUp(event: PointerEvent): void {
+    const swipe = historySwipeRef.current;
+    if (swipe === null || swipe.pointerId !== event.pointerId || event.pointerType === 'touch') {
+      return;
+    }
+
+    historySwipeRef.current = null;
+    if (swipe.isIgnored || isPortraitPhone === false) {
+      return;
+    }
+
+    commitHistorySwipe(event.clientX - swipe.startX, event.clientY - swipe.startY);
+  }
+
   function isPortraitPhoneLayout(): boolean {
     return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 600px) and (orientation: portrait)').matches;
+  }
+
+  function handleExitMobileHistoryMode(): void {
+    setMobileHistoryMode(false);
+    setHistoryScrubXPercent(null);
   }
 
   function handleScreenTap(event: MouseEvent): void {
@@ -813,7 +957,16 @@ export function WorkoutScreen({
   }
 
   return (
-    <main className="screen" onClick={handleScreenTap as JSX.MouseEventHandler<HTMLElement>}>
+    <main
+      className={'screen' + (showMobileHistoryMode ? ' screen--mobile-history' : '')}
+      onClick={handleScreenTap as JSX.MouseEventHandler<HTMLElement>}
+      onTouchStart={handleHistorySwipeTouchStart as JSX.TouchEventHandler<HTMLElement>}
+      onTouchMove={handleHistorySwipeTouchMove as JSX.TouchEventHandler<HTMLElement>}
+      onTouchEnd={handleHistorySwipeTouchEnd as JSX.TouchEventHandler<HTMLElement>}
+      onPointerDown={handleHistorySwipePointerDown as JSX.PointerEventHandler<HTMLElement>}
+      onPointerMove={handleHistorySwipePointerMove as JSX.PointerEventHandler<HTMLElement>}
+      onPointerUp={handleHistorySwipePointerUp as JSX.PointerEventHandler<HTMLElement>}
+    >
       <section className={'hero-card hero-card--session ' + phaseClassName + (isSessionActive ? ' hero-card--running' : '')}>
         <p className="eyebrow">{controllerState.connectedDeviceName ?? 'No HR monitor connected'}</p>
         <h1 className="timer">{startupCountdownSec === null ? formatClock(phaseRemainingSec) : '00:0' + String(startupCountdownSec)}</h1>
@@ -1007,8 +1160,14 @@ export function WorkoutScreen({
           ) : null}
         </article>
 
-        {controllerState.hrConnectionStatus === 'connected' ? null : <article className="panel panel-wide panel--history">
+        {(controllerState.hrConnectionStatus === 'connected' && showMobileHistoryMode === false) ? null : <article className="panel panel-wide panel--history">
           <h2>History</h2>
+          {showMobileHistoryMode ? <div className="history-mobile-actions">
+            <button type="button" onClick={() => navigateHistoryByOffset(-1)}>Newer</button>
+            <button type="button" onClick={handleExitMobileHistoryMode}>Back</button>
+            <button type="button" onClick={() => navigateHistoryByOffset(1)}>Older</button>
+            {selectedHistorySession === null ? null : <button type="button" className="history-item-delete" onClick={() => void handleDeleteHistorySession(selectedHistorySession.id)} disabled={deletingHistorySessionId === selectedHistorySession.id}>{deletingHistorySessionId === selectedHistorySession.id ? 'Deleting...' : 'Delete'}</button>}
+          </div> : null}
           <div className="history-layout">
             <div className="history-detail">
               {selectedHistorySession === null ? (
@@ -1108,7 +1267,10 @@ export function WorkoutScreen({
                   <button
                     type="button"
                     className="history-item-select"
-                    onClick={() => setSelectedHistorySessionId(session.id)}
+                    onClick={() => {
+                      setSelectedHistorySessionId(session.id);
+                      setMobileHistoryMode(true);
+                    }}
                   >
                     <span>{formatSessionDate(session.startedAt)}</span>
                     <strong>{session.workDurationSec}s work</strong>
