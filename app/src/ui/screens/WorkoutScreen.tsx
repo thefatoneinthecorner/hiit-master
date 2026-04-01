@@ -87,6 +87,7 @@ export function WorkoutScreen({
   const [previousIntervalStats, setPreviousIntervalStats] = useState<IntervalStatRecord[]>([]);
   const [historySessions, setHistorySessions] = useState<SessionRecord[]>([]);
   const [selectedHistorySessionId, setSelectedHistorySessionId] = useState<string | null>(null);
+  const [deletingHistorySessionId, setDeletingHistorySessionId] = useState<string | null>(null);
   const [selectedHistoryStats, setSelectedHistoryStats] = useState<IntervalStatRecord[]>([]);
   const [selectedHistorySamples, setSelectedHistorySamples] = useState<HeartRateSample[]>([]);
   const [selectedHistoryPreviousStats, setSelectedHistoryPreviousStats] = useState<IntervalStatRecord[]>([]);
@@ -266,7 +267,7 @@ export function WorkoutScreen({
     return nextState;
   }
 
-  async function refreshHistory(): Promise<void> {
+  async function refreshHistory(preferredSessionId?: string | null): Promise<void> {
     const storage = storageRef.current;
     if (storage === null) {
       return;
@@ -274,7 +275,14 @@ export function WorkoutScreen({
 
     const sessions = await storage.sessions.listAll();
     setHistorySessions(sessions);
-    setSelectedHistorySessionId((current) => current ?? (sessions[0]?.id ?? null));
+    setSelectedHistorySessionId((current) => {
+      const requested = preferredSessionId === undefined ? current : preferredSessionId;
+      if (requested !== null && requested !== undefined && sessions.some((session) => session.id === requested)) {
+        return requested;
+      }
+
+      return sessions[0]?.id ?? null;
+    });
   }
 
   useEffect(() => {
@@ -471,6 +479,43 @@ export function WorkoutScreen({
     await controller.endEarly(now());
     syncControllerState();
     await refreshHistory();
+  }
+
+  async function handleDeleteHistorySession(sessionId: string): Promise<void> {
+    const storage = storageRef.current;
+    if (storage === null || deletingHistorySessionId !== null) {
+      return;
+    }
+
+    const targetSession = historySessions.find((session) => session.id === sessionId) ?? null;
+    if (targetSession === null) {
+      return;
+    }
+
+    const confirmed = typeof window === 'undefined'
+      ? true
+      : window.confirm('Delete ' + formatSessionDate(targetSession.startedAt) + '? This removes the session, its heart-rate samples, and its interval stats.');
+    if (confirmed === false) {
+      return;
+    }
+
+    setDeletingHistorySessionId(sessionId);
+
+    try {
+      await storage.heartRateSamples.deleteBySessionId(sessionId);
+      await storage.intervalStats.deleteBySessionId(sessionId);
+      await storage.sessions.deleteById(sessionId);
+
+      const remainingSessions = historySessions.filter((session) => session.id !== sessionId);
+      const deletedIndex = historySessions.findIndex((session) => session.id === sessionId);
+      const nextSelection = selectedHistorySessionId !== sessionId
+        ? selectedHistorySessionId
+        : remainingSessions[Math.min(deletedIndex, Math.max(remainingSessions.length - 1, 0))]?.id ?? null;
+
+      await refreshHistory(nextSelection);
+    } finally {
+      setDeletingHistorySessionId(null);
+    }
   }
 
   useEffect(() => {
@@ -1056,16 +1101,29 @@ export function WorkoutScreen({
               {historySessions.length === 0 ? (
                 <p className="panel-copy">No sessions stored yet.</p>
               ) : historySessions.map((session) => (
-                <button
+                <div
                   key={session.id}
-                  type="button"
                   className={'history-item ' + (session.id === selectedHistorySessionId ? 'history-item--active' : '')}
-                  onClick={() => setSelectedHistorySessionId(session.id)}
                 >
-                  <span>{formatSessionDate(session.startedAt)}</span>
-                  <strong>{session.workDurationSec}s work</strong>
-                  <span>{formatSessionBadge(session)}</span>
-                </button>
+                  <button
+                    type="button"
+                    className="history-item-select"
+                    onClick={() => setSelectedHistorySessionId(session.id)}
+                  >
+                    <span>{formatSessionDate(session.startedAt)}</span>
+                    <strong>{session.workDurationSec}s work</strong>
+                    <span>{formatSessionBadge(session)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="history-item-delete"
+                    onClick={() => void handleDeleteHistorySession(session.id)}
+                    disabled={deletingHistorySessionId === session.id}
+                    aria-label={'Delete ' + formatSessionDate(session.startedAt)}
+                  >
+                    {deletingHistorySessionId === session.id ? 'Deleting...' : 'Delete'}
+                  </button>
+                </div>
               ))}
             </div>
           </div>

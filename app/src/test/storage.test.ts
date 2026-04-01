@@ -105,6 +105,31 @@ describe('storage repositories', () => {
     closeDatabase(database);
   });
 
+  it('deletes a stored session and its related records', async () => {
+    const database = await openDatabase();
+    const sessionRepository = new SessionRepository(database);
+    const sampleRepository = new HeartRateSampleRepository(database);
+    const statRepository = new IntervalStatRepository(database);
+
+    await sessionRepository.save(createSessionRecord({ id: 'session-delete' }));
+    await sampleRepository.appendMany([
+      { id: 'sample-1', sessionId: 'session-delete', timestampMs: 1_000, bpm: 120, isMissing: false },
+      { id: 'sample-2', sessionId: 'session-delete', timestampMs: 2_000, bpm: null, isMissing: true }
+    ]);
+    await statRepository.replaceForSession('session-delete', [
+      { id: 'stat-1', sessionId: 'session-delete', roundIndex: 0, peakBpm: 150, troughBpm: 120, deltaBpm: 30, analysisVersion: 1 }
+    ]);
+
+    await sampleRepository.deleteBySessionId('session-delete');
+    await statRepository.deleteBySessionId('session-delete');
+    await sessionRepository.deleteById('session-delete');
+
+    expect(await sessionRepository.getById('session-delete')).toBeNull();
+    expect(await sampleRepository.listBySessionId('session-delete')).toEqual([]);
+    expect(await statRepository.listBySessionId('session-delete')).toEqual([]);
+    closeDatabase(database);
+  });
+
   it('saves and loads app settings', async () => {
     const database = await openDatabase();
     const repository = new AppSettingsRepository(database);

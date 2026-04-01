@@ -105,6 +105,12 @@ export class SessionRepository {
     return (records as SessionRecord[]).sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt));
   }
 
+  async deleteById(id: string): Promise<void> {
+    const transaction = this.database.transaction(STORE_SESSIONS, 'readwrite');
+    transaction.objectStore(STORE_SESSIONS).delete(id);
+    await transactionDone(transaction);
+  }
+
   async getPreviousComparisonEligibleSession(currentSessionId: string): Promise<SessionRecord | null> {
     const sessions = await this.listAll();
 
@@ -140,6 +146,18 @@ export class HeartRateSampleRepository {
 
     return (records as HeartRateSampleRecord[]).sort((left, right) => left.timestampMs - right.timestampMs);
   }
+
+  async deleteBySessionId(sessionId: string): Promise<void> {
+    const existing = await this.listBySessionId(sessionId);
+    const transaction = this.database.transaction(STORE_HEART_RATE_SAMPLES, 'readwrite');
+    const store = transaction.objectStore(STORE_HEART_RATE_SAMPLES);
+
+    for (const record of existing) {
+      store.delete(record.id);
+    }
+
+    await transactionDone(transaction);
+  }
 }
 
 export class IntervalStatRepository {
@@ -168,6 +186,18 @@ export class IntervalStatRepository {
     await transactionDone(transaction);
 
     return (records as IntervalStatRecord[]).sort((left, right) => left.roundIndex - right.roundIndex);
+  }
+
+  async deleteBySessionId(sessionId: string): Promise<void> {
+    const existing = await this.listBySessionId(sessionId);
+    const transaction = this.database.transaction(STORE_INTERVAL_STATS, 'readwrite');
+    const store = transaction.objectStore(STORE_INTERVAL_STATS);
+
+    for (const record of existing) {
+      store.delete(record.id);
+    }
+
+    await transactionDone(transaction);
   }
 }
 

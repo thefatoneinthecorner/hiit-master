@@ -18,6 +18,10 @@ class FakeSessionRepository {
     this.records = [...this.records.filter((candidate) => candidate.id !== record.id), record];
   }
 
+  async deleteById(id: string): Promise<void> {
+    this.records = this.records.filter((record) => record.id !== id);
+  }
+
   async getById(id: string): Promise<SessionRecord | null> {
     return this.records.find((record) => record.id === id) ?? null;
   }
@@ -38,6 +42,10 @@ class FakeHeartRateSampleRepository {
     this.records.push(record);
   }
 
+  async deleteBySessionId(sessionId: string): Promise<void> {
+    this.records = this.records.filter((record) => record.sessionId !== sessionId);
+  }
+
   async appendMany(records: HeartRateSampleRecord[]): Promise<void> {
     this.records.push(...records);
   }
@@ -52,6 +60,10 @@ class FakeIntervalStatRepository {
 
   async replaceForSession(sessionId: string, records: IntervalStatRecord[]): Promise<void> {
     this.records = [...this.records.filter((record) => record.sessionId !== sessionId), ...records];
+  }
+
+  async deleteBySessionId(sessionId: string): Promise<void> {
+    this.records = this.records.filter((record) => record.sessionId !== sessionId);
   }
 
   async listBySessionId(sessionId: string): Promise<IntervalStatRecord[]> {
