@@ -44,3 +44,12 @@ export interface AppSettingsRecord {
   id: 'app_settings';
   lastWorkDurationSec: number;
 }
+
+export interface StorageBackupRecord {
+  version: 1;
+  exportedAt: string;
+  sessions: SessionRecord[];
+  heartRateSamples: HeartRateSampleRecord[];
+  intervalStats: IntervalStatRecord[];
+  appSettings: AppSettingsRecord | null;
+}

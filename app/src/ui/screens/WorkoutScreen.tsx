@@ -14,8 +14,13 @@ import {
   type HeartRateMonitor,
   type HeartRateMonitorCallbacks
 } from '../../infrastructure/bluetooth/monitor';
-import { createStorageRepositories, type StorageRepositories } from '../../infrastructure/storage/db';
-import type { IntervalStatRecord, SessionRecord } from '../../infrastructure/storage/types';
+import {
+  createStorageRepositories,
+  exportStorageBackup,
+  importStorageBackup,
+  type StorageRepositories
+} from '../../infrastructure/storage/db';
+import type { IntervalStatRecord, SessionRecord, StorageBackupRecord } from '../../infrastructure/storage/types';
 import type { WorkoutPlan } from '../../domain/workout/types';
 import { getWorkWindows } from '../../domain/workout/plan';
 
@@ -86,6 +91,7 @@ export function WorkoutScreen({
   const monitorRef = useRef<HeartRateMonitor | null>(null);
   const storageRef = useRef<StorageRepositories | null>(null);
   const comparisonInteractionRef = useRef<HTMLDivElement | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const comparisonPlotRef = useRef<HTMLDivElement | null>(null);
   const historyComparisonInteractionRef = useRef<HTMLDivElement | null>(null);
   const historyComparisonPlotRef = useRef<HTMLDivElement | null>(null);
@@ -117,6 +123,9 @@ export function WorkoutScreen({
   const [historyScrubXPercent, setHistoryScrubXPercent] = useState<number | null>(null);
   const [startupCountdownSec, setStartupCountdownSec] = useState<number | null>(null);
   const [mobileHistoryMode, setMobileHistoryMode] = useState(false);
+  const [transferMessage, setTransferMessage] = useState<string | null>(null);
+  const [transferMessageIsError, setTransferMessageIsError] = useState(false);
+  const [isTransferringData, setIsTransferringData] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -521,6 +530,89 @@ export function WorkoutScreen({
     setMobileHistoryMode(true);
     setSelectedHistorySessionId(historySessions[nextIndex]?.id ?? null);
     setHistoryScrubXPercent(null);
+  }
+
+  async function handleExportData(): Promise<void> {
+    const storage = storageRef.current;
+    if (storage === null || isSessionActive || startupCountdownSec !== null) {
+      return;
+    }
+
+    setIsTransferringData(true);
+    setTransferMessage(null);
+    setTransferMessageIsError(false);
+
+    try {
+      const backup = await exportStorageBackup(storage);
+      const backupJson = JSON.stringify(backup, null, 2);
+      const exportName = 'hiit-master-backup-' + backup.exportedAt.replace(/[:.]/g, '-') + '.json';
+      const blob = new Blob([backupJson], { type: 'application/json' });
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = exportName;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      setTransferMessage('Exported ' + String(backup.sessions.length) + ' sessions to ' + exportName + '.');
+    } catch (error) {
+      setTransferMessage(error instanceof Error ? error.message : 'Failed to export stored data.');
+      setTransferMessageIsError(true);
+    } finally {
+      setIsTransferringData(false);
+    }
+  }
+
+  function handleImportButtonClick(): void {
+    if (isSessionActive || startupCountdownSec !== null) {
+      return;
+    }
+
+    setTransferMessage(null);
+    setTransferMessageIsError(false);
+    if (importInputRef.current !== null) {
+      importInputRef.current.value = '';
+      importInputRef.current.click();
+    }
+  }
+
+  async function handleImportFileChange(event: Event): Promise<void> {
+    const storage = storageRef.current;
+    const input = event.currentTarget as HTMLInputElement | null;
+    const file = input?.files?.[0] ?? null;
+    if (storage === null || file === null || isSessionActive || startupCountdownSec !== null) {
+      return;
+    }
+
+    setIsTransferringData(true);
+    setTransferMessage(null);
+    setTransferMessageIsError(false);
+
+    try {
+      const parsed = parseStorageBackup(JSON.parse(await file.text()));
+      const confirmed = typeof window === 'undefined'
+        ? true
+        : window.confirm('Replace all stored sessions on this device with the contents of ' + file.name + '?');
+      if (confirmed === false) {
+        return;
+      }
+
+      await importStorageBackup(storage, parsed);
+      const preferredSessionId = parsed.sessions[0]?.id ?? null;
+      setWorkDurationSec(parsed.appSettings?.lastWorkDurationSec ?? DEFAULT_WORK_DURATION_SEC);
+      setMobileHistoryMode(false);
+      setScrubXPercent(null);
+      setHistoryScrubXPercent(null);
+      await refreshHistory(preferredSessionId);
+      setTransferMessage('Imported ' + String(parsed.sessions.length) + ' sessions from ' + file.name + '.');
+    } catch (error) {
+      setTransferMessage(error instanceof Error ? error.message : 'Failed to import stored data.');
+      setTransferMessageIsError(true);
+    } finally {
+      setIsTransferringData(false);
+      if (input !== null) {
+        input.value = '';
+      }
+    }
   }
 
   async function handleDeleteHistorySession(sessionId: string): Promise<void> {
@@ -1017,19 +1109,30 @@ export function WorkoutScreen({
               </button>
             </div>
             <div className="action-stack">
-              <button type="button" className="primary-action" onClick={() => void handleConnectToggle()} disabled={isConnecting || startupCountdownSec !== null}>
+              <button type="button" className="primary-action" onClick={() => void handleConnectToggle()} disabled={isConnecting || startupCountdownSec !== null || isTransferringData}>
                 {getConnectionActionLabel(controllerState, isConnecting)}
               </button>
-              <button type="button" className="primary-action" onClick={() => void handleStartSession()} disabled={canStart === false || isConnecting}>
+              <button type="button" className="primary-action" onClick={() => void handleStartSession()} disabled={canStart === false || isConnecting || isTransferringData}>
                 {startupCountdownSec !== null
                   ? 'Starting in ' + String(startupCountdownSec)
                   : controllerState.controllerStatus === 'completed' || controllerState.controllerStatus === 'ended_early' ? 'Start New Session' : 'Start Session'}
               </button>
             </div>
+            <div className="action-stack action-stack--inline">
+              <button type="button" onClick={() => void handleExportData()} disabled={isConnecting || isSessionActive || startupCountdownSec !== null || isTransferringData}>
+                {isTransferringData ? 'Working...' : 'Export Data'}
+              </button>
+              <button type="button" onClick={handleImportButtonClick} disabled={isConnecting || isSessionActive || startupCountdownSec !== null || isTransferringData}>
+                {isTransferringData ? 'Working...' : 'Import Data'}
+              </button>
+            </div>
+            <input ref={importInputRef} type="file" accept="application/json" className="visually-hidden" onChange={(event) => void handleImportFileChange(event)} />
             <p className="panel-copy">
               Uses the real Web Bluetooth `heart_rate` service. Connection drops are recorded through the existing session-controller compromise flow.
             </p>
+            <p className="panel-copy">Export a JSON backup on the laptop, move it to the phone, then import it there to replace the phone's stored data.</p>
             {connectionMessage !== null ? <p className="panel-copy panel-copy--alert">{connectionMessage}</p> : null}
+            {transferMessage !== null ? <p className={'panel-copy' + (transferMessageIsError ? ' panel-copy--alert' : '')}>{transferMessage}</p> : null}
           </article>
 
           <article className="panel panel--runtime">
@@ -1312,6 +1415,29 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
+}
+
+function parseStorageBackup(value: unknown): StorageBackupRecord {
+  if (isRecord(value) === false || value.version !== 1) {
+    throw new Error('Import file is not a supported HIIT Master backup.');
+  }
+
+  if (Array.isArray(value.sessions) === false || Array.isArray(value.heartRateSamples) === false || Array.isArray(value.intervalStats) === false) {
+    throw new Error('Import file is missing one or more required data collections.');
+  }
+
+  if (value.appSettings !== null && value.appSettings !== undefined && isRecord(value.appSettings) === false) {
+    throw new Error('Import file contains invalid app settings.');
+  }
+
+  return {
+    version: 1,
+    exportedAt: typeof value.exportedAt === 'string' ? value.exportedAt : new Date().toISOString(),
+    sessions: value.sessions as SessionRecord[],
+    heartRateSamples: value.heartRateSamples as import('../../infrastructure/storage/types').HeartRateSampleRecord[],
+    intervalStats: value.intervalStats as IntervalStatRecord[],
+    appSettings: value.appSettings === undefined ? null : value.appSettings as StorageBackupRecord['appSettings']
+  };
 }
 
 function getConnectionActionLabel(state: WorkoutSessionControllerState, isConnecting: boolean): string {
@@ -2000,4 +2126,8 @@ function isChartBpmSample(value: ChartBpmSample | ChartSampleGap): value is Char
 
 function isChartSampleGap(value: ChartBpmSample | ChartSampleGap): value is ChartSampleGap {
   return value.bpm === null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

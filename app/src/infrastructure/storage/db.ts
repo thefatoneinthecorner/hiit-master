@@ -2,7 +2,8 @@ import type {
   AppSettingsRecord,
   HeartRateSampleRecord,
   IntervalStatRecord,
-  SessionRecord
+  SessionRecord,
+  StorageBackupRecord
 } from './types';
 
 export const DB_NAME = 'hiit-master-rebuild';
@@ -111,6 +112,24 @@ export class SessionRepository {
     await transactionDone(transaction);
   }
 
+  async clear(): Promise<void> {
+    const transaction = this.database.transaction(STORE_SESSIONS, 'readwrite');
+    transaction.objectStore(STORE_SESSIONS).clear();
+    await transactionDone(transaction);
+  }
+
+  async replaceAll(records: SessionRecord[]): Promise<void> {
+    const transaction = this.database.transaction(STORE_SESSIONS, 'readwrite');
+    const store = transaction.objectStore(STORE_SESSIONS);
+    store.clear();
+
+    for (const record of records) {
+      store.put(record);
+    }
+
+    await transactionDone(transaction);
+  }
+
   async getPreviousComparisonEligibleSession(currentSessionId: string): Promise<SessionRecord | null> {
     const sessions = await this.listAll();
 
@@ -145,6 +164,32 @@ export class HeartRateSampleRepository {
     await transactionDone(transaction);
 
     return (records as HeartRateSampleRecord[]).sort((left, right) => left.timestampMs - right.timestampMs);
+  }
+
+  async listAll(): Promise<HeartRateSampleRecord[]> {
+    const transaction = this.database.transaction(STORE_HEART_RATE_SAMPLES, 'readonly');
+    const records = await requestToPromise(transaction.objectStore(STORE_HEART_RATE_SAMPLES).getAll());
+    await transactionDone(transaction);
+
+    return (records as HeartRateSampleRecord[]).sort((left, right) => left.timestampMs - right.timestampMs);
+  }
+
+  async clear(): Promise<void> {
+    const transaction = this.database.transaction(STORE_HEART_RATE_SAMPLES, 'readwrite');
+    transaction.objectStore(STORE_HEART_RATE_SAMPLES).clear();
+    await transactionDone(transaction);
+  }
+
+  async replaceAll(records: HeartRateSampleRecord[]): Promise<void> {
+    const transaction = this.database.transaction(STORE_HEART_RATE_SAMPLES, 'readwrite');
+    const store = transaction.objectStore(STORE_HEART_RATE_SAMPLES);
+    store.clear();
+
+    for (const record of records) {
+      store.put(record);
+    }
+
+    await transactionDone(transaction);
   }
 
   async deleteBySessionId(sessionId: string): Promise<void> {
@@ -188,6 +233,38 @@ export class IntervalStatRepository {
     return (records as IntervalStatRecord[]).sort((left, right) => left.roundIndex - right.roundIndex);
   }
 
+  async listAll(): Promise<IntervalStatRecord[]> {
+    const transaction = this.database.transaction(STORE_INTERVAL_STATS, 'readonly');
+    const records = await requestToPromise(transaction.objectStore(STORE_INTERVAL_STATS).getAll());
+    await transactionDone(transaction);
+
+    return (records as IntervalStatRecord[]).sort((left, right) => {
+      if (left.sessionId === right.sessionId) {
+        return left.roundIndex - right.roundIndex;
+      }
+
+      return left.sessionId.localeCompare(right.sessionId);
+    });
+  }
+
+  async clear(): Promise<void> {
+    const transaction = this.database.transaction(STORE_INTERVAL_STATS, 'readwrite');
+    transaction.objectStore(STORE_INTERVAL_STATS).clear();
+    await transactionDone(transaction);
+  }
+
+  async replaceAll(records: IntervalStatRecord[]): Promise<void> {
+    const transaction = this.database.transaction(STORE_INTERVAL_STATS, 'readwrite');
+    const store = transaction.objectStore(STORE_INTERVAL_STATS);
+    store.clear();
+
+    for (const record of records) {
+      store.put(record);
+    }
+
+    await transactionDone(transaction);
+  }
+
   async deleteBySessionId(sessionId: string): Promise<void> {
     const existing = await this.listBySessionId(sessionId);
     const transaction = this.database.transaction(STORE_INTERVAL_STATS, 'readwrite');
@@ -216,6 +293,22 @@ export class AppSettingsRepository {
     await transactionDone(transaction);
     return (result as AppSettingsRecord | undefined) ?? null;
   }
+
+  async clear(): Promise<void> {
+    const transaction = this.database.transaction(STORE_APP_SETTINGS, 'readwrite');
+    transaction.objectStore(STORE_APP_SETTINGS).clear();
+    await transactionDone(transaction);
+  }
+
+  async replace(record: AppSettingsRecord | null): Promise<void> {
+    const transaction = this.database.transaction(STORE_APP_SETTINGS, 'readwrite');
+    const store = transaction.objectStore(STORE_APP_SETTINGS);
+    store.clear();
+    if (record !== null) {
+      store.put(record);
+    }
+    await transactionDone(transaction);
+  }
 }
 
 export interface StorageRepositories {
@@ -238,4 +331,29 @@ export async function createStorageRepositories(): Promise<StorageRepositories> 
 
 export function closeDatabase(database: IDBDatabase): void {
   database.close();
+}
+
+export async function exportStorageBackup(storage: StorageRepositories): Promise<StorageBackupRecord> {
+  const [sessions, heartRateSamples, intervalStats, appSettings] = await Promise.all([
+    storage.sessions.listAll(),
+    storage.heartRateSamples.listAll(),
+    storage.intervalStats.listAll(),
+    storage.appSettings.get()
+  ]);
+
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    sessions,
+    heartRateSamples,
+    intervalStats,
+    appSettings
+  };
+}
+
+export async function importStorageBackup(storage: StorageRepositories, backup: StorageBackupRecord): Promise<void> {
+  await storage.sessions.replaceAll(backup.sessions);
+  await storage.heartRateSamples.replaceAll(backup.heartRateSamples);
+  await storage.intervalStats.replaceAll(backup.intervalStats);
+  await storage.appSettings.replace(backup.appSettings);
 }

@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   AppSettingsRepository,
   closeDatabase,
+  exportStorageBackup,
   HeartRateSampleRepository,
+  importStorageBackup,
   IntervalStatRepository,
   openDatabase,
   SessionRepository
@@ -139,6 +141,40 @@ describe('storage repositories', () => {
     const loaded = await repository.get();
 
     expect(loaded).toEqual(settings);
+    closeDatabase(database);
+  });
+
+  it('exports and re-imports the full storage backup', async () => {
+    const database = await openDatabase();
+    const storage = {
+      sessions: new SessionRepository(database),
+      heartRateSamples: new HeartRateSampleRepository(database),
+      intervalStats: new IntervalStatRepository(database),
+      appSettings: new AppSettingsRepository(database)
+    };
+
+    await storage.sessions.save(createSessionRecord({ id: 'session-export' }));
+    await storage.heartRateSamples.appendMany([
+      { id: 'sample-export', sessionId: 'session-export', timestampMs: 1_000, bpm: 121, isMissing: false }
+    ]);
+    await storage.intervalStats.replaceForSession('session-export', [
+      { id: 'stat-export', sessionId: 'session-export', roundIndex: 0, peakBpm: 150, troughBpm: 120, deltaBpm: 30, analysisVersion: 1 }
+    ]);
+    await storage.appSettings.save({ id: 'app_settings', lastWorkDurationSec: 24 });
+
+    const backup = await exportStorageBackup(storage);
+
+    await storage.sessions.clear();
+    await storage.heartRateSamples.clear();
+    await storage.intervalStats.clear();
+    await storage.appSettings.clear();
+
+    await importStorageBackup(storage, backup);
+
+    expect((await storage.sessions.listAll()).map((record) => record.id)).toEqual(['session-export']);
+    expect((await storage.heartRateSamples.listAll()).map((record) => record.id)).toEqual(['sample-export']);
+    expect((await storage.intervalStats.listAll()).map((record) => record.id)).toEqual(['stat-export']);
+    expect(await storage.appSettings.get()).toEqual({ id: 'app_settings', lastWorkDurationSec: 24 });
     closeDatabase(database);
   });
 });
