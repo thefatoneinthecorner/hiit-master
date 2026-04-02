@@ -92,6 +92,23 @@ describe('WorkoutSessionController', () => {
     );
   });
 
+  it('surfaces live BPM before a session starts and clears it on disconnect', async () => {
+    const controller = new WorkoutSessionController({
+      storage: createStorage(),
+      createId: (() => {
+        let counter = 0;
+        return () => `id-${counter += 1}`;
+      })()
+    });
+
+    controller.connectHeartRate('Polar H10');
+    await controller.recordHeartRateSample(Date.parse('2026-03-30T00:00:00.000Z'), 76);
+    expect(controller.getState().currentBpm).toBe(76);
+
+    await controller.disconnectHeartRate(Date.parse('2026-03-30T00:00:01.000Z'));
+    expect(controller.getState().currentBpm).toBeNull();
+  });
+
   it('starts a session and persists session metadata', async () => {
     const storage = createStorage();
     const controller = new WorkoutSessionController({

@@ -36,6 +36,7 @@ export class WorkoutSessionController {
   private isCompromised = false;
   private comparisonEligible = false;
   private previousComparisonSessionId: string | null = null;
+  private currentBpm: number | null = null;
 
   constructor(dependencies: WorkoutSessionControllerDependencies) {
     this.storage = dependencies.storage;
@@ -61,7 +62,7 @@ export class WorkoutSessionController {
       comparisonEligible: this.comparisonEligible,
       hrConnectionStatus: this.hrConnectionStatus,
       connectedDeviceName: this.connectedDeviceName,
-      currentBpm: this.activeSession?.currentBpm ?? null,
+      currentBpm: this.activeSession?.currentBpm ?? this.currentBpm,
       previousComparisonSessionId: this.previousComparisonSessionId,
       workoutPlan: this.activeSession?.workoutPlan ?? null,
       currentIntervalStats,
@@ -72,10 +73,13 @@ export class WorkoutSessionController {
   connectHeartRate(deviceName: string): void {
     this.hrConnectionStatus = 'connected';
     this.connectedDeviceName = deviceName;
+    this.currentBpm = null;
   }
 
   async disconnectHeartRate(timestampMs: number): Promise<void> {
     this.hrConnectionStatus = 'disconnected';
+    this.connectedDeviceName = null;
+    this.currentBpm = null;
 
     if (this.activeSession === null) {
       return;
@@ -87,8 +91,7 @@ export class WorkoutSessionController {
   }
 
   reconnectHeartRate(deviceName: string): void {
-    this.hrConnectionStatus = 'connected';
-    this.connectedDeviceName = deviceName;
+    this.connectHeartRate(deviceName);
   }
 
   async startSession(workDurationSec: number, startedAtMs: number): Promise<void> {
@@ -163,6 +166,8 @@ export class WorkoutSessionController {
   }
 
   async recordHeartRateSample(timestampMs: number, bpm: number): Promise<void> {
+    this.currentBpm = bpm;
+
     if (this.activeSession === null) {
       return;
     }
@@ -175,6 +180,7 @@ export class WorkoutSessionController {
 
     this.activeSession.samples.push(sample);
     this.activeSession.currentBpm = bpm;
+    this.currentBpm = bpm;
 
     await this.storage.heartRateSamples.append({
       id: this.createId(),
@@ -219,6 +225,7 @@ export class WorkoutSessionController {
 
     this.activeSession.samples.push(sample);
     this.activeSession.currentBpm = null;
+    this.currentBpm = null;
 
     await this.storage.heartRateSamples.append({
       id: this.createId(),

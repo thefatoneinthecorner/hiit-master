@@ -100,6 +100,7 @@ export function WorkoutScreen({
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioDestinationRef = useRef<AudioNode | null>(null);
   const wakeLockRef = useRef<WakeLockSentinelLike | null>(null);
+  const noSleepVideoRef = useRef<HTMLVideoElement | null>(null);
   const lastCountdownBeepSecRef = useRef<number | null>(null);
   const previousPhaseTypeRef = useRef<PhaseType | null>(null);
   const [bootstrapStatus, setBootstrapStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -192,14 +193,20 @@ export function WorkoutScreen({
       cancelled = true;
       const monitor = monitorRef.current;
       const wakeLock = wakeLockRef.current;
+      const noSleepVideo = noSleepVideoRef.current;
       monitorRef.current = null;
       storageRef.current = null;
       wakeLockRef.current = null;
+      noSleepVideoRef.current = null;
       if (monitor !== null) {
         void monitor.dispose();
       }
       if (wakeLock !== null) {
         void wakeLock.release();
+      }
+      if (noSleepVideo !== null) {
+        noSleepVideo.pause();
+        noSleepVideo.remove();
       }
     };
   }, [monitorFactory, now, storageFactory]);
@@ -232,6 +239,60 @@ export function WorkoutScreen({
     }
   }
 
+  async function ensureNoSleepFallbackReady(): Promise<HTMLVideoElement | null> {
+    if (typeof document === 'undefined') {
+      return null;
+    }
+
+    if (noSleepVideoRef.current !== null) {
+      return noSleepVideoRef.current;
+    }
+
+    const video = document.createElement('video');
+    video.src = new URL('nosleep.mp4', document.baseURI).toString();
+    video.loop = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    video.setAttribute('muted', '');
+    video.setAttribute('aria-hidden', 'true');
+    video.style.position = 'fixed';
+    video.style.width = '1px';
+    video.style.height = '1px';
+    video.style.opacity = '0';
+    video.style.pointerEvents = 'none';
+    video.style.bottom = '0';
+    video.style.right = '0';
+    document.body.appendChild(video);
+    noSleepVideoRef.current = video;
+    return video;
+  }
+
+  async function enableNoSleepFallback(): Promise<void> {
+    const video = await ensureNoSleepFallbackReady();
+    if (video === null) {
+      return;
+    }
+
+    try {
+      if (video.paused) {
+        await video.play();
+      }
+    } catch {
+      return;
+    }
+  }
+
+  function disableNoSleepFallback(): void {
+    const video = noSleepVideoRef.current;
+    if (video === null) {
+      return;
+    }
+
+    video.pause();
+    video.currentTime = 0;
+  }
+
   function playTone(frequencyHz: number, durationSec: number): void {
     const audioContext = audioContextRef.current;
     const destination = audioDestinationRef.current;
@@ -254,6 +315,8 @@ export function WorkoutScreen({
   }
 
   async function requestWakeLock(): Promise<void> {
+    await enableNoSleepFallback();
+
     if (typeof navigator === 'undefined') {
       return;
     }
@@ -274,6 +337,8 @@ export function WorkoutScreen({
   }
 
   async function releaseWakeLock(): Promise<void> {
+    disableNoSleepFallback();
+
     const wakeLock = wakeLockRef.current;
     wakeLockRef.current = null;
     if (wakeLock === null) {
@@ -448,6 +513,27 @@ export function WorkoutScreen({
     }
   }
 
+  async function handleReconnectMonitor(): Promise<void> {
+    const monitor = monitorRef.current;
+    if (monitor === null || controllerState.hrConnectionStatus !== 'connected') {
+      return;
+    }
+
+    setIsConnecting(true);
+    setConnectionMessage(null);
+
+    try {
+      await ensureAudioReady();
+      await monitor.disconnect();
+      await monitor.connect();
+    } catch (error) {
+      setConnectionMessage(error instanceof Error ? error.message : 'Failed to reconnect to the heart-rate monitor.');
+    } finally {
+      setIsConnecting(false);
+      syncControllerState();
+    }
+  }
+
   async function handleStartSession(): Promise<void> {
     const controller = controllerRef.current;
     if (controller === null || startupCountdownSec !== null) {
@@ -455,6 +541,7 @@ export function WorkoutScreen({
     }
 
     await ensureAudioReady();
+    await enableNoSleepFallback();
     setStartupCountdownSec(3);
 
     for (const countdownSec of [3, 2, 1]) {
@@ -495,6 +582,7 @@ export function WorkoutScreen({
     const resumedAtMs = now();
     const pauseDeltaMs = pausedAtMs === null ? 0 : resumedAtMs - pausedAtMs;
     void ensureAudioReady();
+    void enableNoSleepFallback();
     controller.resume();
     setPausedAccumulatedMs((current) => current + pauseDeltaMs);
     setPausedAtMs(null);
@@ -1112,6 +1200,7 @@ export function WorkoutScreen({
               <button type="button" className="primary-action" onClick={() => void handleConnectToggle()} disabled={isConnecting || startupCountdownSec !== null || isTransferringData}>
                 {getConnectionActionLabel(controllerState, isConnecting)}
               </button>
+              {controllerState.hrConnectionStatus === 'connected' ? <button type="button" onClick={() => void handleReconnectMonitor()} disabled={isConnecting || startupCountdownSec !== null || isTransferringData}>Reconnect Monitor</button> : null}
               <button type="button" className="primary-action" onClick={() => void handleStartSession()} disabled={canStart === false || isConnecting || isTransferringData}>
                 {startupCountdownSec !== null
                   ? 'Starting in ' + String(startupCountdownSec)
@@ -1489,6 +1578,12 @@ function getStatusCopy(state: WorkoutSessionControllerState): string {
 
   if (state.controllerStatus === 'running') {
     return 'The session is live. Timer state, current BPM, live round deltas, and previous-session comparison are being driven from the session controller.';
+  }
+
+  if (state.hrConnectionStatus === 'connected') {
+    return state.currentBpm === null
+      ? 'Monitor connected. Waiting for a live BPM sample before you start the session.'
+      : 'Monitor connected. Live BPM is showing before session start, and you can reconnect if the value gets stuck.';
   }
 
   return 'Select the work duration, connect a real monitor, and start a session. The screen now uses the Web Bluetooth adapter plus the existing controller and IndexedDB repositories.';

@@ -94,11 +94,16 @@ class FakeHeartRateMonitor implements HeartRateMonitor {
     return true;
   }
 
+  connectCount = 0;
+  disconnectCount = 0;
+
   async connect(): Promise<void> {
+    this.connectCount += 1;
     this.callbacks.onConnected('Polar H10');
   }
 
   async disconnect(): Promise<void> {
+    this.disconnectCount += 1;
     await this.callbacks.onDisconnected();
   }
 
@@ -149,6 +154,43 @@ describe('WorkoutScreen', () => {
 
     expect(await screen.findByText('The session is live. Timer state, current BPM, live round deltas, and previous-session comparison are being driven from the session controller.', {}, { timeout: 5000 })).toBeTruthy();
     expect((await screen.findAllByText('running', {}, { timeout: 5000 })).length).toBeGreaterThan(0);
+  });
+
+  it('shows live BPM before the session starts and can reconnect the monitor', async () => {
+    const storage = createStorage({ id: 'app_settings', lastWorkDurationSec: 35 });
+    let monitor: FakeHeartRateMonitor | null = null;
+
+    render(
+      <WorkoutScreen
+        storageFactory={async () => storage}
+        monitorFactory={(callbacks) => {
+          monitor = new FakeHeartRateMonitor(callbacks);
+          return monitor;
+        }}
+        now={() => Date.parse('2026-03-30T12:00:00.000Z')}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect Heart-Rate Monitor' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Monitor connected. Waiting for a live BPM sample before you start the session.')).toBeTruthy();
+    });
+
+    await act(async () => {
+      await monitor!.emitHeartRateSample(76);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('76')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reconnect Monitor' }));
+
+    await waitFor(() => {
+      expect(monitor?.disconnectCount).toBe(1);
+      expect(monitor?.connectCount).toBe(2);
+    });
   });
 
   it('renders a broken live trace when heart-rate coverage drops mid-session', async () => {
