@@ -21,6 +21,9 @@ interface ActiveSessionContext {
   samples: HeartRateSample[];
 }
 
+const MIN_VALID_BPM = 25;
+const MAX_VALID_BPM = 240;
+
 export interface WorkoutSessionControllerDependencies {
   storage: StorageRepositories;
   createId?: () => string;
@@ -166,6 +169,10 @@ export class WorkoutSessionController {
   }
 
   async recordHeartRateSample(timestampMs: number, bpm: number): Promise<void> {
+    if (Number.isFinite(bpm) === false || bpm < MIN_VALID_BPM || bpm > MAX_VALID_BPM) {
+      return;
+    }
+
     this.currentBpm = bpm;
 
     if (this.activeSession === null) {

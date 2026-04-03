@@ -86,3 +86,7 @@ You can alter the behavior of the application on the fly using URL query paramet
 1. Drop `index.html` into a GitHub repository.
 2. Enable **GitHub Pages**.
 3. Open the URL in Safari on iOS, tap **Share**, and select **Add to Home Screen**.
+
+## Current Status
+
+The rebuilt app now also has a Capacitor iOS shell scaffold under `ios/` for native-device work.

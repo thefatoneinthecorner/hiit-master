@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'preact/compat';
 import type { JSX, VNode } from 'preact';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { WorkoutSessionController } from '../../application/session/controller';
 import type { WorkoutSessionControllerState } from '../../application/session/types';
@@ -10,7 +11,7 @@ import type { ComparisonRound } from '../../domain/comparison/types';
 import { DEFAULT_WORK_DURATION_SEC, MAX_WORK_DURATION_SEC, MIN_WORK_DURATION_SEC, ROUNDS_PLANNED } from '../../domain/workout/constants';
 import type { PhaseSegment, PhaseType } from '../../domain/workout/types';
 import {
-  createWebBluetoothHeartRateMonitor,
+  createAdaptiveHeartRateMonitor,
   type HeartRateMonitor,
   type HeartRateMonitorCallbacks
 } from '../../infrastructure/bluetooth/monitor';
@@ -52,6 +53,8 @@ const PHASE_LABELS: Record<PhaseType, string> = {
   cooldown: 'Cooldown'
 };
 
+const nativeKeepAwake = registerPlugin<KeepAwakePlugin>('KeepAwake');
+
 export interface WorkoutScreenProps {
   storageFactory?: () => Promise<StorageRepositories>;
   monitorFactory?: (callbacks: HeartRateMonitorCallbacks) => HeartRateMonitor;
@@ -61,6 +64,14 @@ export interface WorkoutScreenProps {
 interface WakeLockSentinelLike {
   release: () => Promise<void>;
 }
+
+interface KeepAwakePlugin {
+  keepAwake: () => Promise<void>;
+  allowSleep: () => Promise<void>;
+}
+
+const MIN_CHART_BPM = 25;
+const MAX_CHART_BPM = 240;
 
 interface TouchSwipeState {
   startX: number;
@@ -84,7 +95,7 @@ function logSwipeDebug(message: string): string {
 
 export function WorkoutScreen({
   storageFactory = createStorageRepositories,
-  monitorFactory = createWebBluetoothHeartRateMonitor,
+  monitorFactory = createAdaptiveHeartRateMonitor,
   now = Date.now
 }: WorkoutScreenProps): VNode {
   const controllerRef = useRef<WorkoutSessionController | null>(null);
@@ -315,6 +326,14 @@ export function WorkoutScreen({
   }
 
   async function requestWakeLock(): Promise<void> {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await nativeKeepAwake.keepAwake();
+      } catch {
+        // Fall back to browser-based wake-lock handling below if unavailable.
+      }
+    }
+
     await enableNoSleepFallback();
 
     if (typeof navigator === 'undefined') {
@@ -337,6 +356,14 @@ export function WorkoutScreen({
   }
 
   async function releaseWakeLock(): Promise<void> {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await nativeKeepAwake.allowSleep();
+      } catch {
+        // Continue with fallback cleanup even if native release is unavailable.
+      }
+    }
+
     disableNoSleepFallback();
 
     const wakeLock = wakeLockRef.current;
@@ -491,7 +518,7 @@ export function WorkoutScreen({
     }
 
     if (monitor.isSupported() === false) {
-      setConnectionMessage('Web Bluetooth is not available in this browser. Use a Chromium-based browser on a supported device.');
+      setConnectionMessage('Bluetooth monitor connection is not available on this device. Use the native iPhone app or a supported Chromium-based browser.');
       return;
     }
 
@@ -796,16 +823,22 @@ export function WorkoutScreen({
   const previousChartTiming = demoFixture === null
     ? getChartTimingFromSession(previousComparisonSession)
     : getChartTimingFromSession(demoFixture.previousSession);
+  const liveSessionStartedAtMs = demoFixture === null
+    ? controllerState.sessionStartedAtMs
+    : Date.parse(demoFixture.currentSession.startedAt);
   const comparisonRounds = demoFixture === null
     ? getVisibleLiveComparisonRounds(
-      createComparisonRounds(effectiveCurrentIntervalStats, effectivePreviousIntervalStats),
-      controllerState.workoutPlan,
-      controllerState.elapsedSec
+      effectiveCurrentIntervalStats,
+      effectivePreviousIntervalStats,
+      currentChartTiming,
+      controllerState.elapsedSec,
+      effectiveCurrentHeartRateSamples,
+      liveSessionStartedAtMs
     )
     : demoFixture.comparisonRounds;
   const comparisonChart = createComparisonChartModel(
     effectiveCurrentHeartRateSamples,
-    demoFixture === null ? controllerState.sessionStartedAtMs : Date.parse(demoFixture.currentSession.startedAt),
+    liveSessionStartedAtMs,
     effectiveCurrentIntervalStats,
     effectivePreviousIntervalStats,
     currentChartTiming,
@@ -820,7 +853,8 @@ export function WorkoutScreen({
       comparisonChart.maxElapsedSec,
       maxComparisonDiff,
       effectiveCurrentHeartRateSamples,
-      demoFixture === null ? controllerState.sessionStartedAtMs : Date.parse(demoFixture.currentSession.startedAt)
+      liveSessionStartedAtMs,
+      effectiveCurrentIntervalStats
     );
   const scrubDetail = comparisonChart === null
     ? null
@@ -828,9 +862,10 @@ export function WorkoutScreen({
       scrubXPercent,
       comparisonRounds,
       effectiveCurrentHeartRateSamples,
-      demoFixture === null ? controllerState.sessionStartedAtMs : Date.parse(demoFixture.currentSession.startedAt),
+      liveSessionStartedAtMs,
       currentChartTiming,
-      comparisonChart.maxElapsedSec
+      comparisonChart.maxElapsedSec,
+      effectiveCurrentIntervalStats
     );
   const isScrubberEnabled = controllerState.controllerStatus !== 'running';
   const isPortraitPhone = isPortraitPhoneLayout();
@@ -857,7 +892,8 @@ export function WorkoutScreen({
       selectedHistoryChart.maxElapsedSec,
       getMaxComparisonDiff(selectedHistoryComparisonRounds),
       selectedHistorySamples,
-      selectedHistorySession === null ? null : Date.parse(selectedHistorySession.startedAt)
+      selectedHistorySession === null ? null : Date.parse(selectedHistorySession.startedAt),
+      selectedHistoryStats
     );
   const selectedHistoryScrubDetail = selectedHistoryChart === null
     ? null
@@ -867,7 +903,8 @@ export function WorkoutScreen({
       selectedHistorySamples,
       selectedHistorySession === null ? null : Date.parse(selectedHistorySession.startedAt),
       selectedHistoryTiming,
-      selectedHistoryChart.maxElapsedSec
+      selectedHistoryChart.maxElapsedSec,
+      selectedHistoryStats
     );
   const liveTimeLabels = isPortraitPhone ? comparisonChart?.timeLabels.slice(1) ?? [] : comparisonChart?.timeLabels ?? [];
   const historyTimeLabels = isPortraitPhone ? selectedHistoryChart?.timeLabels.slice(1) ?? [] : selectedHistoryChart?.timeLabels ?? [];
@@ -1217,7 +1254,7 @@ export function WorkoutScreen({
             </div>
             <input ref={importInputRef} type="file" accept="application/json" className="visually-hidden" onChange={(event) => void handleImportFileChange(event)} />
             <p className="panel-copy">
-              Uses the real Web Bluetooth `heart_rate` service. Connection drops are recorded through the existing session-controller compromise flow.
+              Uses native BLE inside the iPhone app and Web Bluetooth in supported desktop browsers. Connection drops are recorded through the existing session-controller compromise flow.
             </p>
             <p className="panel-copy">Export a JSON backup on the laptop, move it to the phone, then import it there to replace the phone's stored data.</p>
             {connectionMessage !== null ? <p className="panel-copy panel-copy--alert">{connectionMessage}</p> : null}
@@ -1586,35 +1623,38 @@ function getStatusCopy(state: WorkoutSessionControllerState): string {
       : 'Monitor connected. Live BPM is showing before session start, and you can reconnect if the value gets stuck.';
   }
 
-  return 'Select the work duration, connect a real monitor, and start a session. The screen now uses the Web Bluetooth adapter plus the existing controller and IndexedDB repositories.';
+  return 'Select the work duration, connect a real monitor, and start a session. The screen uses the platform Bluetooth adapter plus the existing controller and IndexedDB repositories.';
 }
 
 function getVisibleLiveComparisonRounds(
-  rounds: ComparisonRound[],
-  plan: WorkoutPlan | null,
-  elapsedSec: number
+  currentStats: ComparisonSourceStat[],
+  previousStats: ComparisonSourceStat[],
+  timing: ComparisonChartTiming | null,
+  elapsedSec: number,
+  samples: HeartRateSample[],
+  sessionStartedAtMs: number | null
 ): ComparisonRound[] {
-  if (plan === null) {
+  const rounds = createComparisonRounds(currentStats, previousStats);
+  if (timing === null) {
     return rounds;
   }
 
-  const workWindows = getWorkWindows(plan);
-  const visibleRoundIndexes = new Set<number>();
-
-  for (let index = 0; index < workWindows.length; index += 1) {
-    const workWindow = workWindows[index];
-    if (workWindow === undefined) {
-      continue;
+  const currentStatsByRound = new Map(currentStats.map((stat) => [stat.roundIndex, stat]));
+  return rounds.filter((round) => {
+    const currentStat = currentStatsByRound.get(round.roundIndex) ?? null;
+    if (currentStat === null) {
+      return false;
     }
 
-    const nextWorkWindow = workWindows[index + 1] ?? null;
-    const comparisonReadySec = nextWorkWindow?.endSec ?? plan.totalDurationSec;
-    if (elapsedSec >= comparisonReadySec) {
-      visibleRoundIndexes.add(workWindow.roundIndex);
-    }
-  }
-
-  return rounds.filter((round) => visibleRoundIndexes.has(round.roundIndex));
+    return elapsedSec >= getRoundComparisonRevealSec(
+      round.roundIndex,
+      currentStat.peakBpm,
+      round.previousDelta,
+      timing,
+      samples,
+      sessionStartedAtMs
+    );
+  });
 }
 
 function getDiffClassName(round: ComparisonRound): string {
@@ -1651,16 +1691,26 @@ function createComparisonStripBars(
   maxElapsedSec: number,
   maxComparisonDiff: number,
   currentSamples: HeartRateSample[],
-  currentSessionStartedAtMs: number | null
+  currentSessionStartedAtMs: number | null,
+  currentStats: ComparisonSourceStat[]
 ): Array<{ roundIndex: number; className: string; style: CSSProperties; title: string }> {
   if (timing === null || maxElapsedSec === 0) {
     return [];
   }
 
+  const currentStatsByRound = new Map(currentStats.map((stat) => [stat.roundIndex, stat]));
   return rounds
     .filter((round) => round.currentDelta !== null && round.previousDelta !== null && round.diffDelta !== null)
     .map((round) => {
-    const comparisonDisplaySec = getRoundComparisonDisplaySec(round.roundIndex, timing, currentSamples, currentSessionStartedAtMs);
+    const currentStat = currentStatsByRound.get(round.roundIndex) ?? null;
+    const comparisonDisplaySec = getRoundComparisonRevealSec(
+      round.roundIndex,
+      currentStat?.peakBpm ?? null,
+      round.previousDelta,
+      timing,
+      currentSamples,
+      currentSessionStartedAtMs
+    );
     const xPercent = Math.max(1, Math.min(99, getElapsedX(comparisonDisplaySec, maxElapsedSec)));
     const magnitude = round.diffDelta === null || maxComparisonDiff === 0
       ? 0
@@ -1818,6 +1868,13 @@ interface ComparisonScrubDetail {
   diffDelta: number | null;
 }
 
+interface ComparisonSourceStat {
+  roundIndex: number;
+  peakBpm: number | null;
+  troughBpm: number | null;
+  deltaBpm: number | null;
+}
+
 function createComparisonChartModel(
   currentSamples: HeartRateSample[],
   currentSessionStartedAtMs: number | null,
@@ -1837,7 +1894,9 @@ function createComparisonChartModel(
     ...liveSamples.map((sample) => sample.bpm),
     ...sortedCurrentStats.flatMap((stat) => [stat.peakBpm, stat.troughBpm]),
     ...sortedPreviousStats.flatMap((stat) => [stat.peakBpm, stat.troughBpm])
-  ].filter(isNumber);
+  ].filter((value): value is number =>
+    isNumber(value) && value >= MIN_CHART_BPM && value <= MAX_CHART_BPM
+  );
 
   if (allValues.length === 0 || maxElapsedSec === 0) {
     return null;
@@ -1991,18 +2050,42 @@ function getRoundStartSec(roundIndex: number, timing: ComparisonChartTiming): nu
   return elapsedSec;
 }
 
-function getRoundComparisonDisplaySec(
+function getRoundComparisonRevealSec(
   roundIndex: number,
+  peakBpm: number | null,
+  previousDelta: number | null,
   timing: ComparisonChartTiming,
   samples: HeartRateSample[],
   sessionStartedAtMs: number | null
 ): number {
   const nextRoundIndex = roundIndex + 1;
-  if (nextRoundIndex >= timing.restsSec.length + 1) {
-    return getEstimatedFinalComparisonDisplaySec(timing, samples, sessionStartedAtMs);
+  const recoveryStartSec = getRoundStartSec(roundIndex, timing) + timing.workDurationSec;
+  const defaultRevealSec = nextRoundIndex >= timing.restsSec.length + 1
+    ? getEstimatedFinalComparisonDisplaySec(timing, samples, sessionStartedAtMs)
+    : getRoundStartSec(nextRoundIndex, timing);
+
+  if (peakBpm === null || previousDelta === null || sessionStartedAtMs === null) {
+    return defaultRevealSec;
   }
 
-  return getRoundStartSec(nextRoundIndex, timing) + timing.workDurationSec;
+  const recoveryEndSec = nextRoundIndex >= timing.restsSec.length + 1
+    ? timing.totalDurationSec
+    : getRoundStartSec(nextRoundIndex, timing);
+  const thresholdBpm = peakBpm - previousDelta;
+  const zeroCrossingSample = samples
+    .filter((sample) => sample.isMissing === false && sample.bpm !== null)
+    .map((sample) => ({
+      elapsedSec: (sample.timestampMs - sessionStartedAtMs) / 1000,
+      bpm: sample.bpm as number
+    }))
+    .filter((sample) => sample.elapsedSec >= recoveryStartSec && sample.elapsedSec < recoveryEndSec)
+    .find((sample) => sample.bpm <= thresholdBpm);
+
+  if (zeroCrossingSample !== undefined) {
+    return zeroCrossingSample.elapsedSec;
+  }
+
+  return defaultRevealSec;
 }
 
 function getEstimatedFinalComparisonDisplaySec(
@@ -2088,7 +2171,8 @@ function createComparisonScrubDetail(
   currentSamples: HeartRateSample[],
   currentSessionStartedAtMs: number | null,
   timing: ComparisonChartTiming | null,
-  maxElapsedSec: number
+  maxElapsedSec: number,
+  currentStats: ComparisonSourceStat[]
 ): ComparisonScrubDetail | null {
   if (scrubXPercent === null || timing === null || maxElapsedSec === 0 || rounds.length === 0) {
     return null;
@@ -2099,12 +2183,27 @@ function createComparisonScrubDetail(
   const liveSamples = liveSeries.filter(isChartBpmSample);
   const hasGapAtScrubPosition = isGapAtElapsedSec(liveSeries, scrubElapsedSec);
   const nearestSample = hasGapAtScrubPosition ? null : getNearestChartSample(liveSamples, scrubElapsedSec);
+  const currentStatsByRound = new Map(currentStats.map((stat) => [stat.roundIndex, stat]));
   let nearestRound = rounds[0]!;
-  let nearestDisplaySec = getRoundComparisonDisplaySec(nearestRound.roundIndex, timing, currentSamples, currentSessionStartedAtMs);
+  let nearestDisplaySec = getRoundComparisonRevealSec(
+    nearestRound.roundIndex,
+    currentStatsByRound.get(nearestRound.roundIndex)?.peakBpm ?? null,
+    nearestRound.previousDelta,
+    timing,
+    currentSamples,
+    currentSessionStartedAtMs
+  );
   let nearestDistance = Math.abs(nearestDisplaySec - scrubElapsedSec);
 
   for (const round of rounds) {
-    const displaySec = getRoundComparisonDisplaySec(round.roundIndex, timing, currentSamples, currentSessionStartedAtMs);
+    const displaySec = getRoundComparisonRevealSec(
+      round.roundIndex,
+      currentStatsByRound.get(round.roundIndex)?.peakBpm ?? null,
+      round.previousDelta,
+      timing,
+      currentSamples,
+      currentSessionStartedAtMs
+    );
     const distance = Math.abs(displaySec - scrubElapsedSec);
     if (distance < nearestDistance) {
       nearestRound = round;

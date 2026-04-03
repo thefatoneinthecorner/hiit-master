@@ -6,6 +6,9 @@
   "mounts": [
     "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
   ],
+  "runArgs": [
+    "--privileged"
+  ],
   "forwardPorts": [5173, 8787],
   // 3. WebStorm-specific customizations
   "customizations": {
