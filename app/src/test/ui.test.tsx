@@ -139,13 +139,14 @@ describe('WorkoutScreen', () => {
       />
     );
 
+    expect(screen.queryByText('35s')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Start Session' })).toBeNull();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect Heart-Rate Monitor' }));
+
     expect(await screen.findByText('35s')).toBeTruthy();
 
     const startButton = await screen.findByRole('button', { name: 'Start Session' });
-    expect(startButton.hasAttribute('disabled')).toBe(true);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Connect Heart-Rate Monitor' }));
-
     await waitFor(() => {
       expect(startButton.hasAttribute('disabled')).toBe(false);
     });

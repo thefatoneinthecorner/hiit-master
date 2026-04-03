@@ -23,7 +23,7 @@ import {
 } from '../../infrastructure/storage/db';
 import type { IntervalStatRecord, SessionRecord, StorageBackupRecord } from '../../infrastructure/storage/types';
 import type { WorkoutPlan } from '../../domain/workout/types';
-import { getWorkWindows } from '../../domain/workout/plan';
+import { createWorkoutPlan, getWorkWindows } from '../../domain/workout/plan';
 
 const INITIAL_CONTROLLER_STATE: WorkoutSessionControllerState = {
   controllerStatus: 'idle',
@@ -53,6 +53,8 @@ const PHASE_LABELS: Record<PhaseType, string> = {
   cooldown: 'Cooldown'
 };
 
+const DURATION_WHEEL_ITEM_HEIGHT_PX = 48;
+
 const nativeKeepAwake = registerPlugin<KeepAwakePlugin>('KeepAwake');
 
 export interface WorkoutScreenProps {
@@ -72,12 +74,19 @@ interface KeepAwakePlugin {
 
 const MIN_CHART_BPM = 25;
 const MAX_CHART_BPM = 240;
+const PREVIEW_CHART_MIN_BPM = 80;
+const PREVIEW_CHART_MAX_BPM = 180;
 
 interface TouchSwipeState {
   startX: number;
   startY: number;
   isIgnored: boolean;
   pointerId: number | null;
+}
+
+interface ReplayTimedSample {
+  elapsedMs: number;
+  bpm: number;
 }
 
 function getSwipeDebugTargetLabel(target: EventTarget | null): string {
@@ -93,6 +102,89 @@ function logSwipeDebug(message: string): string {
   return message;
 }
 
+function isDeviceTestEnabled(search: string): boolean {
+  const params = new URLSearchParams(search);
+  return params.get('device-test') === '1';
+}
+
+async function createReplayHeartRateMonitor(
+  storage: StorageRepositories,
+  callbacks: HeartRateMonitorCallbacks
+): Promise<HeartRateMonitor> {
+  const sessions = await storage.sessions.listAll();
+  const replaySession = sessions.find((session) => session.hasHeartRateData) ?? null;
+  const replaySamples = replaySession === null
+    ? []
+    : (await storage.heartRateSamples.listBySessionId(replaySession.id))
+      .filter((sample) => sample.isMissing === false && sample.bpm !== null)
+      .map((sample, index, samples): ReplayTimedSample => ({
+        elapsedMs: index === 0 ? 0 : Math.max(0, sample.timestampMs - samples[0]!.timestampMs),
+        bpm: sample.bpm as number
+      }));
+
+  let timeoutIds: number[] = [];
+  let isConnected = false;
+
+  function clearReplayTimeouts(): void {
+    for (const timeoutId of timeoutIds) {
+      window.clearTimeout(timeoutId);
+    }
+    timeoutIds = [];
+  }
+
+  async function scheduleReplay(): Promise<void> {
+    clearReplayTimeouts();
+    if (replaySamples.length === 0) {
+      throw new Error('device-test requires at least one stored session with heart-rate data.');
+    }
+
+    for (const sample of replaySamples) {
+      const timeoutId = window.setTimeout(() => {
+        if (isConnected === false) {
+          return;
+        }
+        void callbacks.onHeartRateSample(sample.bpm);
+      }, sample.elapsedMs);
+      timeoutIds.push(timeoutId);
+    }
+
+    const finalSample = replaySamples[replaySamples.length - 1]!;
+    timeoutIds.push(window.setTimeout(() => {
+      if (isConnected === false) {
+        return;
+      }
+      void scheduleReplay();
+    }, finalSample.elapsedMs + 1000));
+  }
+
+  return {
+    isSupported(): boolean {
+      return true;
+    },
+
+    async connect(): Promise<void> {
+      if (replaySamples.length === 0) {
+        throw new Error('device-test requires at least one stored session with heart-rate data.');
+      }
+
+      isConnected = true;
+      await callbacks.onConnected('Device Test Replay');
+      await scheduleReplay();
+    },
+
+    async disconnect(): Promise<void> {
+      clearReplayTimeouts();
+      isConnected = false;
+      await callbacks.onDisconnected();
+    },
+
+    async dispose(): Promise<void> {
+      clearReplayTimeouts();
+      isConnected = false;
+    }
+  };
+}
+
 export function WorkoutScreen({
   storageFactory = createStorageRepositories,
   monitorFactory = createAdaptiveHeartRateMonitor,
@@ -101,6 +193,7 @@ export function WorkoutScreen({
   const controllerRef = useRef<WorkoutSessionController | null>(null);
   const monitorRef = useRef<HeartRateMonitor | null>(null);
   const storageRef = useRef<StorageRepositories | null>(null);
+  const durationWheelRef = useRef<HTMLDivElement | null>(null);
   const comparisonInteractionRef = useRef<HTMLDivElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const comparisonPlotRef = useRef<HTMLDivElement | null>(null);
@@ -161,7 +254,7 @@ export function WorkoutScreen({
           setDemoFixture(null);
         }
         const savedSettings = await storage.appSettings.get();
-        const monitor = monitorFactory({
+        const callbacks: HeartRateMonitorCallbacks = {
           onConnected: (deviceName) => {
             controller.connectHeartRate(deviceName);
             setConnectionMessage(null);
@@ -175,7 +268,11 @@ export function WorkoutScreen({
             await controller.recordHeartRateSample(now(), bpm);
             setControllerState(controller.getState());
           }
-        });
+        };
+        const deviceTestEnabled = typeof window !== 'undefined' && isDeviceTestEnabled(window.location.search);
+        const monitor = deviceTestEnabled
+          ? await createReplayHeartRateMonitor(storage, callbacks)
+          : monitorFactory(callbacks);
 
         if (cancelled) {
           await monitor.dispose();
@@ -793,6 +890,20 @@ export function WorkoutScreen({
     };
   }, [controllerState.controllerStatus, now, pausedAccumulatedMs, sessionStartAtMs]);
 
+  useEffect(() => {
+    if ((controllerState.controllerStatus === 'running' || controllerState.controllerStatus === 'paused') || controllerState.hrConnectionStatus !== 'connected') {
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      scrollDurationWheelToValue(workDurationSec, 'auto');
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [controllerState.controllerStatus, controllerState.hrConnectionStatus, workDurationSec]);
+
   const activePhase = getActivePhase(controllerState);
   const phaseRemainingSec = activePhase === null ? 0 : Math.max(0, activePhase.endSec - controllerState.elapsedSec);
   const totalRemainingSec = controllerState.workoutPlan === null
@@ -810,15 +921,16 @@ export function WorkoutScreen({
     ? 0
     : Math.min(100, (controllerState.elapsedSec / controllerState.workoutPlan.totalDurationSec) * 100);
   const phaseClassName = startupCountdownSec !== null
-    ? 'phase--work'
+    ? 'phase--rest'
     : controllerState.currentPhaseType === null ? 'phase--idle' : 'phase--' + controllerState.currentPhaseType;
   const statusCopy = getStatusCopy(controllerState);
   const effectiveCurrentIntervalStats = demoFixture === null ? controllerState.currentIntervalStats : demoFixture.currentStats;
   const effectiveCurrentHeartRateSamples = demoFixture === null ? controllerState.currentHeartRateSamples : demoFixture.currentSamples;
   const effectivePreviousIntervalStats = demoFixture === null ? previousIntervalStats : demoFixture.previousStats;
   const previousComparisonSession = historySessions.find((session) => session.id === controllerState.previousComparisonSessionId) ?? null;
+  const previewWorkoutPlan = startupCountdownSec === null ? null : createWorkoutPlan(workDurationSec);
   const currentChartTiming = demoFixture === null
-    ? getChartTimingFromWorkoutPlan(controllerState.workoutPlan)
+    ? getChartTimingFromWorkoutPlan(controllerState.workoutPlan ?? previewWorkoutPlan)
     : getChartTimingFromSession(demoFixture.currentSession);
   const previousChartTiming = demoFixture === null
     ? getChartTimingFromSession(previousComparisonSession)
@@ -869,7 +981,7 @@ export function WorkoutScreen({
     );
   const isScrubberEnabled = controllerState.controllerStatus !== 'running';
   const isPortraitPhone = isPortraitPhoneLayout();
-  const showSetupRuntimePanels = isSessionActive === false;
+  const showSetupRuntimePanels = isSessionActive === false && startupCountdownSec === null;
   const selectedHistorySession = historySessions.find((session) => session.id === selectedHistorySessionId) ?? null;
   const selectedHistoryComparisonSession = getPreviousComparisonSessionForHistory(historySessions, selectedHistorySessionId);
   const showMobileHistoryMode = isPortraitPhone && mobileHistoryMode && isSessionActive === false && selectedHistorySession !== null;
@@ -1136,6 +1248,43 @@ export function WorkoutScreen({
     setHistoryScrubXPercent(null);
   }
 
+  function getDurationOptions(): number[] {
+    return Array.from({ length: MAX_WORK_DURATION_SEC - MIN_WORK_DURATION_SEC + 1 }, (_, index) => MIN_WORK_DURATION_SEC + index);
+  }
+
+  function scrollDurationWheelToValue(value: number, behavior: ScrollBehavior = 'smooth'): void {
+    const wheel = durationWheelRef.current;
+    if (wheel === null) {
+      return;
+    }
+
+    const clampedValue = Math.max(MIN_WORK_DURATION_SEC, Math.min(MAX_WORK_DURATION_SEC, value));
+    const index = clampedValue - MIN_WORK_DURATION_SEC;
+    wheel.scrollTo({
+      top: index * DURATION_WHEEL_ITEM_HEIGHT_PX,
+      behavior
+    });
+  }
+
+  function handleDurationWheelScroll(event: Event): void {
+    const target = event.currentTarget as HTMLDivElement | null;
+    if (target === null) {
+      return;
+    }
+
+    const index = Math.max(
+      0,
+      Math.min(
+        MAX_WORK_DURATION_SEC - MIN_WORK_DURATION_SEC,
+        Math.round(target.scrollTop / DURATION_WHEEL_ITEM_HEIGHT_PX)
+      )
+    );
+    const nextValue = MIN_WORK_DURATION_SEC + index;
+    if (nextValue !== workDurationSec) {
+      setWorkDurationSec(nextValue);
+    }
+  }
+
   function handleScreenTap(event: MouseEvent): void {
     if (isSessionActive === false || isPortraitPhoneLayout() === false) {
       return;
@@ -1175,7 +1324,11 @@ export function WorkoutScreen({
 
   return (
     <main
-      className={'screen' + (showMobileHistoryMode ? ' screen--mobile-history' : '')}
+      className={
+        'screen'
+        + (showMobileHistoryMode ? ' screen--mobile-history' : '')
+        + (showSetupRuntimePanels ? ' screen--setup' : '')
+      }
       onClick={handleScreenTap as JSX.MouseEventHandler<HTMLElement>}
       onTouchStart={handleHistorySwipeTouchStart as JSX.TouchEventHandler<HTMLElement>}
       onTouchMove={handleHistorySwipeTouchMove as JSX.TouchEventHandler<HTMLElement>}
@@ -1186,7 +1339,7 @@ export function WorkoutScreen({
     >
       <section className={'hero-card hero-card--session ' + phaseClassName + (isSessionActive ? ' hero-card--running' : '')}>
         <p className="eyebrow">{controllerState.connectedDeviceName ?? 'No HR monitor connected'}</p>
-        <h1 className="timer">{startupCountdownSec === null ? formatClock(phaseRemainingSec) : '00:0' + String(startupCountdownSec)}</h1>
+        {isSessionActive || startupCountdownSec !== null ? <h1 className="timer">{startupCountdownSec === null ? formatClock(phaseRemainingSec) : '00:0' + String(startupCountdownSec)}</h1> : null}
         <div className="hero-scrub-slot" aria-live="polite">
           {scrubDetail !== null && isScrubberEnabled ? <div className="hero-scrub-card">
             <strong>{scrubDetail.timeLabel}</strong>
@@ -1199,18 +1352,18 @@ export function WorkoutScreen({
         <p className={'phase ' + phaseClassName}>{startupCountdownSec === null ? getPhaseHeading(controllerState.currentPhaseType, controllerState.controllerStatus) : 'Starting'}</p>
         <p className="copy">{statusCopy}</p>
         <div className="hero-metrics">
-          <div className="metric-pill metric-pill--round">
+          {(isSessionActive || startupCountdownSec !== null) ? <div className="metric-pill metric-pill--round">
             <span>Round</span>
             <strong>{roundLabel}</strong>
-          </div>
-          <div className="metric-pill metric-pill--bpm">
+          </div> : null}
+          {(isSessionActive || controllerState.hrConnectionStatus === 'connected') ? <div className="metric-pill metric-pill--bpm">
             <span>BPM</span>
             <strong>{controllerState.currentBpm === null ? '--' : controllerState.currentBpm}</strong>
-          </div>
-          <div className="metric-pill metric-pill--total">
+          </div> : null}
+          {(isSessionActive || startupCountdownSec !== null) ? <div className="metric-pill metric-pill--total">
             <span>Total Left</span>
             <strong>{formatClock(totalRemainingSec)}</strong>
-          </div>
+          </div> : null}
         </div>
         <div className="progress-track" aria-hidden="true">
           <div className="progress-bar" style={{ width: String(progressPercent) + '%' }} />
@@ -1221,42 +1374,71 @@ export function WorkoutScreen({
         {showSetupRuntimePanels ? <>
           <article className="panel panel--setup">
             <h2>Setup</h2>
-            <div className="duration-control">
-              <button type="button" onClick={() => setWorkDurationSec((current) => Math.max(MIN_WORK_DURATION_SEC, current - 1))} disabled={isSessionActive || workDurationSec <= MIN_WORK_DURATION_SEC || isConnecting}>
-                -
+            {controllerState.hrConnectionStatus !== 'connected' ? <div className="setup-connect-only">
+              <button type="button" className="primary-action primary-action--connect" onClick={() => void handleConnectToggle()} disabled={isConnecting || startupCountdownSec !== null || isTransferringData}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 20s-6.5-4.1-6.5-9.3A3.9 3.9 0 0 1 9.4 6.8c1 0 1.9.4 2.6 1.1.7-.7 1.6-1.1 2.6-1.1a3.9 3.9 0 0 1 3.9 3.9C18.5 15.9 12 20 12 20Z" fill="currentColor" />
+                  <path d="M9.2 12h1.8l1-2.1 1.2 4.2 1-2.1h1.6" fill="none" stroke="#081019" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <span>{isConnecting ? 'Connecting...' : 'Connect'}</span>
               </button>
-              <div className="duration-readout">
-                <span>Work Duration</span>
-                <strong>{workDurationSec}s</strong>
+            </div> : <>
+              <div className="setup-connected-layout">
+                <div className="setup-connected-layout__spacer" aria-hidden="true" />
+                <div className="action-stack">
+                  <button type="button" className="primary-action primary-action--start" onClick={() => void handleStartSession()} disabled={canStart === false || isConnecting || isTransferringData}>
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <circle cx="15.5" cy="4.75" r="2.25" fill="currentColor" />
+                      <path d="m13.8 8.2-2.9 3.4-2.7 1.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" />
+                      <path d="m13.3 8.7 3.8 2 .9 3.1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" />
+                      <path d="m11 12.4 2.4 2.2-1.4 4.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" />
+                      <path d="m13.6 14.8 4.5 2.4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    <span>{startupCountdownSec !== null
+                      ? 'Starting ' + String(startupCountdownSec)
+                      : 'Start'}</span>
+                  </button>
+                </div>
+                <div className="setup-connected-layout__spacer" aria-hidden="true" />
+                <div className="duration-picker" aria-label="Workout duration picker">
+                  <span className="duration-picker__label">Workout Duration</span>
+                  <div className="duration-wheel-shell">
+                    <div className="duration-wheel-shell__fade duration-wheel-shell__fade--top" aria-hidden="true" />
+                    <div className="duration-wheel-shell__fade duration-wheel-shell__fade--bottom" aria-hidden="true" />
+                    <div className="duration-wheel-shell__highlight" aria-hidden="true" />
+                    <div
+                      ref={durationWheelRef}
+                      className="duration-wheel"
+                      onScroll={handleDurationWheelScroll as JSX.UIEventHandler<HTMLDivElement>}
+                    >
+                      <div className="duration-wheel__spacer" aria-hidden="true" />
+                      {getDurationOptions().map((durationSec) => (
+                        <button
+                          key={durationSec}
+                          type="button"
+                          className={'duration-wheel__item' + (durationSec === workDurationSec ? ' duration-wheel__item--selected' : '')}
+                          onClick={() => {
+                            setWorkDurationSec(durationSec);
+                            scrollDurationWheelToValue(durationSec);
+                          }}
+                          disabled={isSessionActive || isConnecting}
+                        >
+                          <span>{durationSec}</span>
+                          <small>sec</small>
+                        </button>
+                      ))}
+                      <div className="duration-wheel__spacer" aria-hidden="true" />
+                    </div>
+                  </div>
+                </div>
+                <div className="setup-connected-layout__spacer" aria-hidden="true" />
               </div>
-              <button type="button" onClick={() => setWorkDurationSec((current) => Math.min(MAX_WORK_DURATION_SEC, current + 1))} disabled={isSessionActive || workDurationSec >= MAX_WORK_DURATION_SEC || isConnecting}>
-                +
-              </button>
-            </div>
-            <div className="action-stack">
-              <button type="button" className="primary-action" onClick={() => void handleConnectToggle()} disabled={isConnecting || startupCountdownSec !== null || isTransferringData}>
-                {getConnectionActionLabel(controllerState, isConnecting)}
-              </button>
-              {controllerState.hrConnectionStatus === 'connected' ? <button type="button" onClick={() => void handleReconnectMonitor()} disabled={isConnecting || startupCountdownSec !== null || isTransferringData}>Reconnect Monitor</button> : null}
-              <button type="button" className="primary-action" onClick={() => void handleStartSession()} disabled={canStart === false || isConnecting || isTransferringData}>
-                {startupCountdownSec !== null
-                  ? 'Starting in ' + String(startupCountdownSec)
-                  : controllerState.controllerStatus === 'completed' || controllerState.controllerStatus === 'ended_early' ? 'Start New Session' : 'Start Session'}
-              </button>
-            </div>
-            <div className="action-stack action-stack--inline">
-              <button type="button" onClick={() => void handleExportData()} disabled={isConnecting || isSessionActive || startupCountdownSec !== null || isTransferringData}>
-                {isTransferringData ? 'Working...' : 'Export Data'}
-              </button>
-              <button type="button" onClick={handleImportButtonClick} disabled={isConnecting || isSessionActive || startupCountdownSec !== null || isTransferringData}>
-                {isTransferringData ? 'Working...' : 'Import Data'}
-              </button>
-            </div>
+            </>}
+            {/* Data import/export will move to the dedicated Data screen. */}
             <input ref={importInputRef} type="file" accept="application/json" className="visually-hidden" onChange={(event) => void handleImportFileChange(event)} />
             <p className="panel-copy">
               Uses native BLE inside the iPhone app and Web Bluetooth in supported desktop browsers. Connection drops are recorded through the existing session-controller compromise flow.
             </p>
-            <p className="panel-copy">Export a JSON backup on the laptop, move it to the phone, then import it there to replace the phone's stored data.</p>
             {connectionMessage !== null ? <p className="panel-copy panel-copy--alert">{connectionMessage}</p> : null}
             {transferMessage !== null ? <p className={'panel-copy' + (transferMessageIsError ? ' panel-copy--alert' : '')}>{transferMessage}</p> : null}
           </article>
@@ -1520,6 +1702,36 @@ export function WorkoutScreen({
           </div>
         </article>}
       </section>
+
+      <nav className="mobile-tab-bar" aria-label="Primary">
+        <button type="button" className="mobile-tab-bar__item mobile-tab-bar__item--active" aria-current="page">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span>Home</span>
+        </button>
+        <button type="button" className="mobile-tab-bar__item">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 7.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Zm10 4a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z" fill="none" stroke="currentColor" stroke-width="1.8" />
+            <path d="M9.5 10h5M9.5 14h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+          </svg>
+          <span>Devices</span>
+        </button>
+        <button type="button" className="mobile-tab-bar__item">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 5h10a2 2 0 0 1 2 2v10H5V7a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+            <path d="M9 3v4M15 3v4M8 11h8M8 15h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+          </svg>
+          <span>Data</span>
+        </button>
+        <button type="button" className="mobile-tab-bar__item">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" fill="none" stroke="currentColor" stroke-width="1.8" />
+            <path d="m19 12 .9-1.6-1.7-2.9-1.8.3a6 6 0 0 0-1.4-.8L14.4 5h-4.8l-.6 2a6 6 0 0 0-1.4.8l-1.8-.3-.1.1L4.1 10.4 5 12l-.9 1.6 1.7 2.9 1.8-.3c.4.3.9.6 1.4.8l.6 2h4.8l.6-2c.5-.2 1-.5 1.4-.8l1.8.3 1.7-2.9z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" />
+          </svg>
+          <span>Settings</span>
+        </button>
+      </nav>
     </main>
   );
 }
@@ -1898,8 +2110,17 @@ function createComparisonChartModel(
     isNumber(value) && value >= MIN_CHART_BPM && value <= MAX_CHART_BPM
   );
 
-  if (allValues.length === 0 || maxElapsedSec === 0) {
+  if (maxElapsedSec === 0) {
     return null;
+  }
+
+  if (allValues.length === 0) {
+    return {
+      currentPathSegments: [],
+      guides: buildChartGuides(PREVIEW_CHART_MIN_BPM, PREVIEW_CHART_MAX_BPM),
+      timeLabels: buildTimeLabels(maxElapsedSec),
+      maxElapsedSec
+    };
   }
 
   const minValue = Math.min(...allValues);
