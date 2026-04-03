@@ -681,8 +681,16 @@ button:disabled {
   align-items: stretch;
 }
 
+.comparison-chart-shell--labels-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .comparison-axis {
   position: relative;
+}
+
+.comparison-axis--hidden {
+  display: none;
 }
 
 .comparison-axis span {
@@ -707,7 +715,7 @@ button:disabled {
   width: 100%;
   aspect-ratio: 16 / 9;
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: 0;
   background:
     radial-gradient(circle at top, rgba(120, 184, 255, 0.12), transparent 44%),
     rgba(8, 16, 25, 0.6);
@@ -716,6 +724,10 @@ button:disabled {
 .comparison-rounds {
   position: relative;
   height: 1.2rem;
+}
+
+.comparison-rounds--hidden {
+  visibility: hidden;
 }
 
 .comparison-rounds span {
@@ -807,12 +819,20 @@ button:disabled {
   margin-top: 12px;
 }
 
+.comparison-strip-shell--labels-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .comparison-strip-axis {
   display: grid;
   grid-template-rows: repeat(3, 1fr);
   color: var(--muted);
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
+}
+
+.comparison-strip-axis--hidden {
+  display: none;
 }
 
 .comparison-strip-axis span {
@@ -825,7 +845,7 @@ button:disabled {
   position: relative;
   height: 96px;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 0;
   background: rgba(8, 16, 25, 0.45);
   overflow: hidden;
 }
@@ -1063,11 +1083,17 @@ button:disabled {
   }
 
   .panel.panel--comparison {
-    display: contents;
+    display: block;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
   }
 
   .panel--comparison .comparison-visual {
     gap: 0;
+    width: 100%;
   }
 
   .panel--comparison > h2,
@@ -1081,14 +1107,28 @@ button:disabled {
     gap: 8px;
   }
 
+  .comparison-chart-frame,
+  .comparison-strip,
+  .comparison-chart-shell,
+  .comparison-visual {
+    width: 100%;
+    min-width: 0;
+  }
+
   .comparison-strip-shell {
     gap: 8px;
-    margin-top: 22px;
+    margin-top: 10px;
+    width: 100%;
   }
 
   .comparison-chart-shell,
   .comparison-strip-shell {
     grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .comparison-chart-shell.comparison-chart-shell--labels-hidden,
+  .comparison-strip-shell.comparison-strip-shell--labels-hidden {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .comparison-axis {

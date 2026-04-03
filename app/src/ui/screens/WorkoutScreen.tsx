@@ -76,6 +76,7 @@ const MIN_CHART_BPM = 25;
 const MAX_CHART_BPM = 240;
 const PREVIEW_CHART_MIN_BPM = 80;
 const PREVIEW_CHART_MAX_BPM = 180;
+const HIDE_SESSION_GRAPH_LABELS = true;
 
 interface TouchSwipeState {
   startX: number;
@@ -1020,6 +1021,7 @@ export function WorkoutScreen({
     );
   const liveTimeLabels = isPortraitPhone ? comparisonChart?.timeLabels.slice(1) ?? [] : comparisonChart?.timeLabels ?? [];
   const historyTimeLabels = isPortraitPhone ? selectedHistoryChart?.timeLabels.slice(1) ?? [] : selectedHistoryChart?.timeLabels ?? [];
+  const hideSessionGraphLabels = HIDE_SESSION_GRAPH_LABELS;
 
   useEffect(() => {
     if (controllerState.controllerStatus === 'running') {
@@ -1508,8 +1510,8 @@ export function WorkoutScreen({
                 onPointerEnter={handleComparisonPointerEnter as JSX.PointerEventHandler<HTMLDivElement>}
                 onPointerLeave={handleComparisonPointerLeave as JSX.PointerEventHandler<HTMLDivElement>}
               >
-                <div className="comparison-chart-shell">
-                  <div className="comparison-axis" aria-hidden="true">
+                <div className={'comparison-chart-shell' + (hideSessionGraphLabels ? ' comparison-chart-shell--labels-hidden' : '')}>
+                  <div className={'comparison-axis' + (hideSessionGraphLabels ? ' comparison-axis--hidden' : '')} aria-hidden="true">
                     {comparisonChart.guides.map((guide) => (
                       <span key={guide.label} style={{ top: String(guide.y) + '%' }}>{guide.label}</span>
                     ))}
@@ -1524,7 +1526,7 @@ export function WorkoutScreen({
                       ))}
                       {scrubDetail !== null && isScrubberEnabled ? <line x1={scrubDetail.xPercent} y1="0" x2={scrubDetail.xPercent} y2="100" stroke="rgba(120, 184, 255, 0.95)" strokeWidth="0.8" /> : null}
                     </svg>
-                    <div className="comparison-rounds" aria-hidden="true">
+                    <div className={'comparison-rounds' + (hideSessionGraphLabels ? ' comparison-rounds--hidden' : '')} aria-hidden="true">
                       {liveTimeLabels.map((label) => (
                         <span key={label.label} style={{ left: String(label.xPercent) + '%' }}>{label.label}</span>
                       ))}
@@ -1543,8 +1545,8 @@ export function WorkoutScreen({
                 </div>
               </div>
 
-              <div className="comparison-strip-shell">
-                <div className="comparison-strip-axis" aria-hidden="true">
+              <div className={'comparison-strip-shell' + (hideSessionGraphLabels ? ' comparison-strip-shell--labels-hidden' : '')}>
+                <div className={'comparison-strip-axis' + (hideSessionGraphLabels ? ' comparison-strip-axis--hidden' : '')} aria-hidden="true">
                   <span>+</span>
                   <span>0</span>
                   <span>-</span>
