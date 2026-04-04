@@ -9,9 +9,9 @@
 
 ## Navigation rules
 
-- The app uses an in-screen tab model, not a router.
+- The app uses the `preact-iso` router.
 - On mobile there is a bottom action bar.
-- On desktop there is a top tab strip.
+- On desktop there is a nav bar in the header.
 - `Devices` is disabled unless a heart-rate monitor is connected.
 - When a workout session is active, the app forces focus back to `Home`.
 - `History`, `Devices`, and `Settings` are only accessible when no session is active and no startup countdown is running.
@@ -36,8 +36,11 @@
 
 ## Global design intent
 
-- Mobile-first on iPhone
-- The disconnected `Home` state should be extremely sparse
+- Mobile-first on iPhone/Android
+- Desktop for development only
+- Minimal design, usable at a distance of roughly 1m by a user with reasonable eyesight on small screens such as iPhone SE3
+- Should be easy to use and functionality should be obvious and predictable
+- Theme-able
 - Device management should not clutter the main workout flow
-- Data/history behavior should live away from the primary workout CTA
+- Data/history behaviour should live away from the primary workout CTA
 - Session profiles are the source of truth for workout timing

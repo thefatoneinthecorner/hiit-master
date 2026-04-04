@@ -17,14 +17,14 @@
 - Mobile: swipe horizontally between sessions
 - Desktop: use explicit chevrons
 
-## Recovery row editing
+## Recovery row editing (Settings page)
 
 - Tapping a row expands it
 - Only one recovery-related row is expanded at a time
 - Warmup and cooldown cannot be cloned or deleted
 - Recovery rounds can be cloned or deleted
 - Cloning inserts the new round immediately after the source round
-- The last recovery round cannot be deleted
+- The last remaining recovery round (other than the warmup and cooldown) cannot be deleted
 
 ## Stepper rules
 
@@ -34,7 +34,7 @@
 
 ## Device-test mode
 
-Current behavior:
+Implementation note:
 
 - `?device-test=1` swaps the real monitor for a replay monitor
 - Replays heart-rate data from the most recent stored session with samples
@@ -43,5 +43,6 @@ Current behavior:
 ## iPhone/native behavior
 
 - BLE on iPhone uses native Capacitor BLE, not Web Bluetooth
+- BLE on Android should also use a native Capacitor path
 - Browser/Mac flow keeps the Web Bluetooth path
 - Keep-awake uses native Capacitor keep-awake where available

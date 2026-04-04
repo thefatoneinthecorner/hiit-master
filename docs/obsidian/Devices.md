@@ -1,12 +1,15 @@
 # Devices
 
+![[Pasted image 20260404163650.png|300]]
+
+This page displays the name of the connected heart rate monitor ("Polar OH1 36F91927" in the above diagram), its battery status and a live BPM indicator which "pulses" on every data point detected and also changes to red and then fades to grey. The "Reconnect" button should connect to the last Bluetooth device if it has become disconnected and is available. The Disconnect button disconnects the heart rate monitor and terminates any current session.
 ## Purpose
 
 `Devices` is the dedicated monitor-management screen. It exists to keep connection controls out of the main workout flow.
 
 ## Availability
 
-Current behavior:
+Required behavior:
 
 - The `Devices` tab is disabled unless a monitor is connected.
 
@@ -19,11 +22,11 @@ Design intent:
 - Connected device name
 - Battery card
 - Live BPM card with pulsing heart icon
-- Bottom-pinned actions:
+- Bottom-pinned action buttons:
   - `Reconnect`
   - `Disconnect`
 
-## Current readouts
+## Readouts
 
 ### Live BPM
 
@@ -38,7 +41,7 @@ Design intent:
 
 ## Connection behavior
 
-- `Reconnect` currently performs a disconnect and a fresh connect flow
+- `Reconnect` performs a disconnect and a fresh connect flow
 - This may show the Bluetooth picker again
 - `Disconnect` ends the current monitor connection
 

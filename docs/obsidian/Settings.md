@@ -1,8 +1,15 @@
 # Settings
 
+![[Pasted image 20260404170526.png|300]]
+
+![[Pasted image 20260404170549.png|300]]
+
+![[Pasted image 20260404170629.png|300]]
+
+
 ## Purpose
 
-`Settings` is currently the session-profile management screen.
+`Settings` is the session-profile management screen.
 
 This is not a general preferences page yet. It is primarily where workout timing profiles are created, copied, selected, and edited.
 
@@ -25,8 +32,9 @@ Each profile contains:
 - The default profile cannot be deleted
 - One and only one profile is active
 - A copied profile must get a new unique name
+- When a profile name is changed, any references to that profile name in the session history are updated.
 
-## Current screen sections
+## Screen sections
 
 ### Profiles
 
@@ -57,7 +65,7 @@ Unified list containing:
 
 ## Recovery list interaction
 
-Current behavior:
+Required behavior:
 
 - Rows are compact by default
 - Tapping a row expands its controls
