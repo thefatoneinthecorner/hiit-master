@@ -10,6 +10,7 @@ import { createComparisonRounds } from '../../domain/comparison/select';
 import type { ComparisonRound } from '../../domain/comparison/types';
 import { DEFAULT_WORK_DURATION_SEC, MAX_WORK_DURATION_SEC, MIN_WORK_DURATION_SEC, ROUNDS_PLANNED } from '../../domain/workout/constants';
 import type { PhaseSegment, PhaseType } from '../../domain/workout/types';
+import { createDefaultSessionProfile, DEFAULT_PROFILE_ID } from '../../domain/workout/profile';
 import {
   createAdaptiveHeartRateMonitor,
   type HeartRateMonitor,
@@ -21,7 +22,7 @@ import {
   importStorageBackup,
   type StorageRepositories
 } from '../../infrastructure/storage/db';
-import type { IntervalStatRecord, SessionRecord, StorageBackupRecord } from '../../infrastructure/storage/types';
+import type { IntervalStatRecord, SessionProfileRecord, SessionRecord, StorageBackupRecord } from '../../infrastructure/storage/types';
 import type { WorkoutPlan } from '../../domain/workout/types';
 import { createWorkoutPlan, getWorkWindows } from '../../domain/workout/plan';
 
@@ -29,6 +30,7 @@ const INITIAL_CONTROLLER_STATE: WorkoutSessionControllerState = {
   controllerStatus: 'idle',
   sessionId: null,
   sessionStartedAtMs: null,
+  activeProfileName: null,
   workDurationSec: null,
   elapsedSec: 0,
   currentPhaseType: null,
@@ -42,6 +44,7 @@ const INITIAL_CONTROLLER_STATE: WorkoutSessionControllerState = {
   currentBpm: null,
   previousComparisonSessionId: null,
   workoutPlan: null,
+  activeProfile: null,
   currentIntervalStats: [],
   currentHeartRateSamples: []
 };
@@ -91,6 +94,7 @@ interface ReplayTimedSample {
 }
 
 type PrimaryTab = 'home' | 'devices' | 'history' | 'settings';
+type RecoveryRowKey = 'warmup' | 'cooldown' | `round-${number}`;
 
 function getSwipeDebugTargetLabel(target: EventTarget | null): string {
   if (!(target instanceof HTMLElement)) {
@@ -220,6 +224,9 @@ export function WorkoutScreen({
   const [pausedAtMs, setPausedAtMs] = useState<number | null>(null);
   const [pausedAccumulatedMs, setPausedAccumulatedMs] = useState(0);
   const [previousIntervalStats, setPreviousIntervalStats] = useState<IntervalStatRecord[]>([]);
+  const [sessionProfiles, setSessionProfiles] = useState<SessionProfileRecord[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [historySessions, setHistorySessions] = useState<SessionRecord[]>([]);
   const [selectedHistorySessionId, setSelectedHistorySessionId] = useState<string | null>(null);
   const [deletingHistorySessionId, setDeletingHistorySessionId] = useState<string | null>(null);
@@ -230,6 +237,13 @@ export function WorkoutScreen({
   const [activeTab, setActiveTab] = useState<PrimaryTab>('home');
   const [devicesBpmPulseTick, setDevicesBpmPulseTick] = useState(0);
   const [monitorBatteryPercent, setMonitorBatteryPercent] = useState<number | null>(null);
+  const [profileDraft, setProfileDraft] = useState<SessionProfileRecord | null>(null);
+  const [expandedRecoveryRowKey, setExpandedRecoveryRowKey] = useState<RecoveryRowKey | null>(null);
+  const profileStepperHoldRef = useRef<{ timeoutId: number | null; intervalId: number | null; longPressTriggered: boolean }>({
+    timeoutId: null,
+    intervalId: null,
+    longPressTriggered: false
+  });
   const [scrubXPercent, setScrubXPercent] = useState<number | null>(null);
   const [historyScrubXPercent, setHistoryScrubXPercent] = useState<number | null>(null);
   const [startupCountdownSec, setStartupCountdownSec] = useState<number | null>(null);
@@ -237,6 +251,44 @@ export function WorkoutScreen({
   const [transferMessage, setTransferMessage] = useState<string | null>(null);
   const [transferMessageIsError, setTransferMessageIsError] = useState(false);
   const [isTransferringData, setIsTransferringData] = useState(false);
+
+  useEffect(() => {
+    function handleGlobalProfileStepperRelease(): void {
+      if (
+        profileStepperHoldRef.current.timeoutId === null
+        && profileStepperHoldRef.current.intervalId === null
+      ) {
+        return;
+      }
+
+      if (profileStepperHoldRef.current.timeoutId !== null) {
+        window.clearTimeout(profileStepperHoldRef.current.timeoutId);
+      }
+      if (profileStepperHoldRef.current.intervalId !== null) {
+        window.clearInterval(profileStepperHoldRef.current.intervalId);
+      }
+
+      profileStepperHoldRef.current.timeoutId = null;
+      profileStepperHoldRef.current.intervalId = null;
+    }
+
+    window.addEventListener('pointerup', handleGlobalProfileStepperRelease);
+    window.addEventListener('pointercancel', handleGlobalProfileStepperRelease);
+    window.addEventListener('touchend', handleGlobalProfileStepperRelease);
+    window.addEventListener('touchcancel', handleGlobalProfileStepperRelease);
+    window.addEventListener('mouseup', handleGlobalProfileStepperRelease);
+    window.addEventListener('blur', handleGlobalProfileStepperRelease);
+
+    return () => {
+      window.removeEventListener('pointerup', handleGlobalProfileStepperRelease);
+      window.removeEventListener('pointercancel', handleGlobalProfileStepperRelease);
+      window.removeEventListener('touchend', handleGlobalProfileStepperRelease);
+      window.removeEventListener('touchcancel', handleGlobalProfileStepperRelease);
+      window.removeEventListener('mouseup', handleGlobalProfileStepperRelease);
+      window.removeEventListener('blur', handleGlobalProfileStepperRelease);
+      handleGlobalProfileStepperRelease();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -260,6 +312,23 @@ export function WorkoutScreen({
           setDemoFixture(null);
         }
         const savedSettings = await storage.appSettings.get();
+        const storedProfiles = await storage.sessionProfiles.listAll();
+        const defaultProfile = createDefaultSessionProfile(savedSettings?.lastWorkDurationSec ?? DEFAULT_WORK_DURATION_SEC);
+        const profiles = storedProfiles.length === 0
+          ? [defaultProfile]
+          : storedProfiles.some((profile) => profile.id === DEFAULT_PROFILE_ID)
+            ? storedProfiles
+            : [defaultProfile, ...storedProfiles];
+        if (storedProfiles.length === 0 || storedProfiles.some((profile) => profile.id === DEFAULT_PROFILE_ID) === false) {
+          await storage.sessionProfiles.replaceAll(profiles);
+        }
+        const resolvedActiveProfileId = profiles.some((profile) => profile.id === savedSettings?.activeProfileId)
+          ? (savedSettings?.activeProfileId ?? defaultProfile.id)
+          : defaultProfile.id;
+        await storage.appSettings.save({
+          id: 'app_settings',
+          activeProfileId: resolvedActiveProfileId
+        });
         const callbacks: HeartRateMonitorCallbacks = {
           onConnected: (deviceName) => {
             controller.connectHeartRate(deviceName);
@@ -293,7 +362,11 @@ export function WorkoutScreen({
         controllerRef.current = controller;
         monitorRef.current = monitor;
         storageRef.current = storage;
-        setWorkDurationSec(savedSettings?.lastWorkDurationSec ?? DEFAULT_WORK_DURATION_SEC);
+        setSessionProfiles(profiles);
+        setActiveProfileId(resolvedActiveProfileId);
+        setSelectedProfileId(resolvedActiveProfileId);
+        const activeProfile = profiles.find((profile) => profile.id === resolvedActiveProfileId) ?? defaultProfile;
+        setWorkDurationSec(activeProfile.workDurationSec);
         setControllerState(controller.getState());
         setBootstrapStatus('ready');
       } catch (error) {
@@ -692,7 +765,11 @@ export function WorkoutScreen({
     setSessionStartAtMs(startedAtMs);
     setPausedAccumulatedMs(0);
     setPausedAtMs(null);
-    await controller.startSession(workDurationSec, startedAtMs);
+    if (activeProfile === null) {
+      return;
+    }
+
+    await controller.startSession(activeProfile.name, activeProfile, startedAtMs);
     syncControllerState();
     await refreshHistory();
   }
@@ -820,8 +897,17 @@ export function WorkoutScreen({
       }
 
       await importStorageBackup(storage, parsed);
+      const importedProfiles = parsed.sessionProfiles.length === 0
+        ? [createDefaultSessionProfile(parsed.appSettings?.lastWorkDurationSec ?? DEFAULT_WORK_DURATION_SEC)]
+        : parsed.sessionProfiles;
+      const nextActiveProfileId = importedProfiles.some((profile) => profile.id === parsed.appSettings?.activeProfileId)
+        ? (parsed.appSettings?.activeProfileId ?? importedProfiles[0]!.id)
+        : importedProfiles[0]!.id;
       const preferredSessionId = parsed.sessions[0]?.id ?? null;
-      setWorkDurationSec(parsed.appSettings?.lastWorkDurationSec ?? DEFAULT_WORK_DURATION_SEC);
+      setSessionProfiles(importedProfiles);
+      setActiveProfileId(nextActiveProfileId);
+      setSelectedProfileId(nextActiveProfileId);
+      setWorkDurationSec((importedProfiles.find((profile) => profile.id === nextActiveProfileId) ?? importedProfiles[0]!).workDurationSec);
       setMobileHistoryMode(false);
       setScrubXPercent(null);
       setHistoryScrubXPercent(null);
@@ -875,6 +961,293 @@ export function WorkoutScreen({
     }
   }
 
+  async function persistProfiles(nextProfiles: SessionProfileRecord[], nextActiveProfileId: string, nextSelectedProfileId = nextActiveProfileId): Promise<void> {
+    const storage = storageRef.current;
+    if (storage === null) {
+      return;
+    }
+
+    await storage.sessionProfiles.replaceAll(nextProfiles);
+    await storage.appSettings.save({ id: 'app_settings', activeProfileId: nextActiveProfileId });
+    setSessionProfiles(nextProfiles);
+    setActiveProfileId(nextActiveProfileId);
+    setSelectedProfileId(nextSelectedProfileId);
+  }
+
+  async function handleSetActiveProfile(profileId: string): Promise<void> {
+    if (sessionProfiles.some((profile) => profile.id === profileId) === false) {
+      return;
+    }
+
+    await persistProfiles(sessionProfiles, profileId, profileId);
+  }
+
+  async function handleCopyProfile(): Promise<void> {
+    const sourceProfile = selectedProfile;
+    const storage = storageRef.current;
+    if (sourceProfile === null || storage === null) {
+      return;
+    }
+
+    const existingNames = new Set(sessionProfiles.map((profile) => profile.name));
+    let copyIndex = 2;
+    let nextName = sourceProfile.name + ' Copy';
+    while (existingNames.has(nextName)) {
+      nextName = sourceProfile.name + ' Copy ' + String(copyIndex);
+      copyIndex += 1;
+    }
+
+    const nextProfile: SessionProfileRecord = {
+      ...sourceProfile,
+      id: crypto.randomUUID(),
+      name: nextName,
+      isDefault: false,
+      baseRestsSec: [...sourceProfile.baseRestsSec]
+    };
+
+    await persistProfiles([...sessionProfiles, nextProfile], activeProfileId ?? nextProfile.id, nextProfile.id);
+  }
+
+  async function handleDeleteProfile(profileId: string): Promise<void> {
+    const profile = sessionProfiles.find((candidate) => candidate.id === profileId) ?? null;
+    if (profile === null || profile.isDefault) {
+      return;
+    }
+
+    const confirmed = typeof window === 'undefined'
+      ? true
+      : window.confirm('Delete profile "' + profile.name + '"?');
+    if (confirmed === false) {
+      return;
+    }
+
+    const remainingProfiles = sessionProfiles.filter((candidate) => candidate.id !== profileId);
+    const nextSelectedProfileId = remainingProfiles[0]?.id ?? DEFAULT_PROFILE_ID;
+    const nextActiveProfileId = activeProfileId === profileId ? DEFAULT_PROFILE_ID : (activeProfileId ?? DEFAULT_PROFILE_ID);
+    await persistProfiles(remainingProfiles, nextActiveProfileId, nextSelectedProfileId);
+  }
+
+  async function handleSaveProfileDraft(): Promise<void> {
+    const storage = storageRef.current;
+    const currentProfile = selectedProfile;
+    if (storage === null || profileDraft === null || currentProfile === null || currentProfile.isDefault) {
+      return;
+    }
+
+    const trimmedName = profileDraft.name.trim();
+    if (trimmedName.length === 0) {
+      setTransferMessage('Profile name cannot be empty.');
+      setTransferMessageIsError(true);
+      return;
+    }
+
+    if (sessionProfiles.some((profile) => profile.id !== profileDraft.id && profile.name === trimmedName)) {
+      setTransferMessage('Profile name must be unique.');
+      setTransferMessageIsError(true);
+      return;
+    }
+
+    const nextProfile: SessionProfileRecord = {
+      ...profileDraft,
+      name: trimmedName,
+      baseRestsSec: profileDraft.baseRestsSec.length === 0 ? [30] : profileDraft.baseRestsSec
+    };
+    const nextProfiles = sessionProfiles.map((profile) => profile.id === nextProfile.id ? nextProfile : profile);
+    if (currentProfile.name !== nextProfile.name) {
+      await storage.sessions.renameProfile(currentProfile.name, nextProfile.name);
+      await refreshHistory(selectedHistorySessionId);
+    }
+    await persistProfiles(nextProfiles, activeProfileId ?? nextProfile.id, nextProfile.id);
+    setTransferMessage('Saved profile "' + nextProfile.name + '".');
+    setTransferMessageIsError(false);
+  }
+
+  function handleCloneRecoveryRound(roundIndex: number): void {
+    setExpandedRecoveryRowKey(`round-${roundIndex + 1}`);
+    updateProfileDraft((current) => {
+      const nextRests = [...current.baseRestsSec];
+      const sourceValue = nextRests[roundIndex];
+      if (sourceValue === undefined) {
+        return current;
+      }
+      nextRests.splice(roundIndex + 1, 0, sourceValue);
+      return { ...current, baseRestsSec: nextRests };
+    });
+  }
+
+  function handleDeleteRecoveryRound(roundIndex: number): void {
+    setExpandedRecoveryRowKey((current) => {
+      if (current === null) {
+        return null;
+      }
+      if (current === `round-${roundIndex}`) {
+        return null;
+      }
+      if (current.startsWith('round-') === false) {
+        return current;
+      }
+
+      const currentIndex = Number(current.slice(6));
+      if (Number.isNaN(currentIndex)) {
+        return null;
+      }
+
+      return currentIndex > roundIndex ? `round-${currentIndex - 1}` : current;
+    });
+    updateProfileDraft((current) => {
+      if (current.baseRestsSec.length <= 1) {
+        return current;
+      }
+      return {
+        ...current,
+        baseRestsSec: current.baseRestsSec.filter((_, index) => index !== roundIndex)
+      };
+    });
+  }
+
+  function handleToggleRecoveryRow(rowKey: RecoveryRowKey): void {
+    setExpandedRecoveryRowKey((current) => current === rowKey ? null : rowKey);
+  }
+
+  function handleRecoveryRowSummaryKeyDown(event: KeyboardEvent, rowKey: RecoveryRowKey): void {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
+
+    event.preventDefault();
+    handleToggleRecoveryRow(rowKey);
+  }
+
+  useEffect(() => {
+    if (expandedRecoveryRowKey === null || profileDraft === null) {
+      return;
+    }
+
+    if (expandedRecoveryRowKey.startsWith('round-')) {
+      const roundIndex = Number(expandedRecoveryRowKey.slice(6));
+      if (Number.isNaN(roundIndex) || roundIndex >= profileDraft.baseRestsSec.length) {
+        setExpandedRecoveryRowKey(null);
+        return;
+      }
+    }
+
+    const rowId = 'settings-recovery-row-' + expandedRecoveryRowKey;
+    const animationFrameId = window.requestAnimationFrame(() => {
+      const element = document.getElementById(rowId);
+      element?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+    };
+  }, [expandedRecoveryRowKey, profileDraft]);
+
+  useEffect(() => {
+    setExpandedRecoveryRowKey(null);
+  }, [selectedProfileId]);
+
+  function renderRecoveryRow(
+    rowKey: RecoveryRowKey,
+    label: string,
+    valueSec: number,
+    onAdjust: (deltaSec: number) => void,
+    cloneDeleteRoundIndex: number | null
+  ): VNode {
+    const isExpanded = expandedRecoveryRowKey === rowKey;
+    const controlsId = 'settings-recovery-row-controls-' + rowKey;
+    const rowId = 'settings-recovery-row-' + rowKey;
+
+    return (
+      <div key={rowKey} id={rowId} className={'settings-round-row' + (isExpanded ? ' settings-round-row--expanded' : '')}>
+        <div
+          className="settings-round-row__summary"
+          role="button"
+          tabIndex={0}
+          onContextMenu={handleSuppressContextMenu as JSX.GenericEventHandler<HTMLDivElement>}
+          onClick={() => handleToggleRecoveryRow(rowKey)}
+          onKeyDown={(event) => handleRecoveryRowSummaryKeyDown(event, rowKey)}
+          aria-expanded={isExpanded}
+          aria-controls={controlsId}
+        >
+          <div className="settings-round-row__summary-copy">
+            <strong>{label}</strong>
+          </div>
+          {isExpanded && cloneDeleteRoundIndex !== null ? <div className="settings-round-row__inline-actions settings-round-row__inline-actions--visible">
+            <button
+              type="button"
+              className="settings-icon-button settings-icon-button--compact"
+              onContextMenu={handleSuppressContextMenu as JSX.GenericEventHandler<HTMLButtonElement>}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleCloneRecoveryRound(cloneDeleteRoundIndex);
+              }}
+              disabled={profileDraft?.isDefault}
+              aria-label={'Clone ' + label.toLowerCase()}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M9 9h10v12H9zM5 3h10v3M5 6h10v12H5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="settings-icon-button settings-icon-button--compact"
+              onContextMenu={handleSuppressContextMenu as JSX.GenericEventHandler<HTMLButtonElement>}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleDeleteRecoveryRound(cloneDeleteRoundIndex);
+              }}
+              disabled={profileDraft?.isDefault || profileDraft === null || profileDraft.baseRestsSec.length <= 1}
+              aria-label={'Delete ' + label.toLowerCase()}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 7h16M9 7V4h6v3m-7 4v6m4-6v6m4-6v6M7 7l1 12h8l1-12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+          </div> : <span className="settings-round-row__summary-value">{valueSec}s</span>}
+        </div>
+        <div
+          id={controlsId}
+          className={'settings-round-row__controls' + (isExpanded ? ' settings-round-row__controls--visible' : '')}
+          aria-hidden={isExpanded ? 'false' : 'true'}
+        >
+          <div className="settings-round-row__controls-inner">
+            <div className="settings-stepper-control">
+              <button
+                type="button"
+                onContextMenu={handleSuppressContextMenu as JSX.GenericEventHandler<HTMLButtonElement>}
+                onTouchStart={() => handleProfileStepperPressStart(onAdjust, -1)}
+                onTouchEnd={handleProfileStepperPressEnd}
+                onTouchCancel={handleProfileStepperPressEnd}
+                onMouseDown={() => handleProfileStepperPressStart(onAdjust, -1)}
+                onMouseUp={handleProfileStepperPressEnd}
+                onMouseLeave={handleProfileStepperPressEnd}
+                onClick={() => handleProfileStepperClick(onAdjust, -1)}
+                disabled={profileDraft?.isDefault}
+              >
+                -
+              </button>
+              <strong>{valueSec}s</strong>
+              <button
+                type="button"
+                onContextMenu={handleSuppressContextMenu as JSX.GenericEventHandler<HTMLButtonElement>}
+                onTouchStart={() => handleProfileStepperPressStart(onAdjust, 1)}
+                onTouchEnd={handleProfileStepperPressEnd}
+                onTouchCancel={handleProfileStepperPressEnd}
+                onMouseDown={() => handleProfileStepperPressStart(onAdjust, 1)}
+                onMouseUp={handleProfileStepperPressEnd}
+                onMouseLeave={handleProfileStepperPressEnd}
+                onClick={() => handleProfileStepperClick(onAdjust, 1)}
+                disabled={profileDraft?.isDefault}
+              >
+                +
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   useEffect(() => {
     const controller = controllerRef.current;
     if (controller === null || sessionStartAtMs === null || controllerState.controllerStatus !== 'running') {
@@ -921,13 +1294,15 @@ export function WorkoutScreen({
     ? 0
     : Math.max(0, controllerState.workoutPlan.totalDurationSec - controllerState.elapsedSec);
   const isSessionActive = controllerState.controllerStatus === 'running' || controllerState.controllerStatus === 'paused';
+  const activeProfile = sessionProfiles.find((profile) => profile.id === activeProfileId) ?? null;
+  const selectedProfile = sessionProfiles.find((profile) => profile.id === selectedProfileId) ?? activeProfile;
   const canStart = bootstrapStatus === 'ready'
     && controllerState.hrConnectionStatus === 'connected'
     && isSessionActive === false
     && startupCountdownSec === null;
   const roundLabel = controllerState.currentRoundIndex === null
     ? (controllerState.currentPhaseType === 'cooldown' ? 'Cooldown' : 'Warmup')
-    : String(controllerState.currentRoundIndex + 1) + ' / ' + String(ROUNDS_PLANNED);
+    : String(controllerState.currentRoundIndex + 1) + ' / ' + String(controllerState.workoutPlan?.roundsPlanned ?? ((activeProfile?.baseRestsSec.length ?? (ROUNDS_PLANNED - 1)) + 1));
   const progressPercent = controllerState.workoutPlan === null || controllerState.workoutPlan.totalDurationSec === 0
     ? 0
     : Math.min(100, (controllerState.elapsedSec / controllerState.workoutPlan.totalDurationSec) * 100);
@@ -939,7 +1314,7 @@ export function WorkoutScreen({
   const effectiveCurrentHeartRateSamples = demoFixture === null ? controllerState.currentHeartRateSamples : demoFixture.currentSamples;
   const effectivePreviousIntervalStats = demoFixture === null ? previousIntervalStats : demoFixture.previousStats;
   const previousComparisonSession = historySessions.find((session) => session.id === controllerState.previousComparisonSessionId) ?? null;
-  const previewWorkoutPlan = startupCountdownSec === null ? null : createWorkoutPlan(workDurationSec);
+  const previewWorkoutPlan = startupCountdownSec === null || activeProfile === null ? null : createWorkoutPlan(activeProfile);
   const currentChartTiming = demoFixture === null
     ? getChartTimingFromWorkoutPlan(controllerState.workoutPlan ?? previewWorkoutPlan)
     : getChartTimingFromSession(demoFixture.currentSession);
@@ -994,7 +1369,8 @@ export function WorkoutScreen({
   const isPortraitPhone = isPortraitPhoneLayout();
   const showDevicesTab = activeTab === 'devices' && isSessionActive === false && startupCountdownSec === null;
   const showHistoryTab = activeTab === 'history' && isSessionActive === false && startupCountdownSec === null;
-  const showSetupRuntimePanels = isSessionActive === false && startupCountdownSec === null && showHistoryTab === false && showDevicesTab === false;
+  const showSettingsTab = activeTab === 'settings' && isSessionActive === false && startupCountdownSec === null;
+  const showSetupRuntimePanels = isSessionActive === false && startupCountdownSec === null && showHistoryTab === false && showDevicesTab === false && showSettingsTab === false;
   const selectedHistorySession = historySessions.find((session) => session.id === selectedHistorySessionId) ?? null;
   const selectedHistoryComparisonSession = getPreviousComparisonSessionForHistory(historySessions, selectedHistorySessionId);
   const showMobileHistoryMode = isPortraitPhone && (mobileHistoryMode || showHistoryTab) && isSessionActive === false && selectedHistorySession !== null;
@@ -1093,6 +1469,19 @@ export function WorkoutScreen({
       setActiveTab('home');
     }
   }, [activeTab, controllerState.hrConnectionStatus]);
+
+  useEffect(() => {
+    setProfileDraft(selectedProfile === null ? null : {
+      ...selectedProfile,
+      baseRestsSec: [...selectedProfile.baseRestsSec]
+    });
+  }, [selectedProfile]);
+
+  useEffect(() => {
+    if (activeProfile !== null) {
+      setWorkDurationSec(activeProfile.workDurationSec);
+    }
+  }, [activeProfile]);
 
   if (bootstrapStatus === 'loading') {
     return (
@@ -1280,6 +1669,74 @@ export function WorkoutScreen({
     }
   }
 
+  function clearProfileStepperHold(): void {
+    if (profileStepperHoldRef.current.timeoutId !== null) {
+      window.clearTimeout(profileStepperHoldRef.current.timeoutId);
+    }
+    if (profileStepperHoldRef.current.intervalId !== null) {
+      window.clearInterval(profileStepperHoldRef.current.intervalId);
+    }
+    profileStepperHoldRef.current.timeoutId = null;
+    profileStepperHoldRef.current.intervalId = null;
+  }
+
+  function updateProfileDraft(mutator: (profile: SessionProfileRecord) => SessionProfileRecord): void {
+    setProfileDraft((current) => current === null ? null : mutator(current));
+  }
+
+  function updateDraftStepValue(field: 'workDurationSec' | 'warmupSec' | 'cooldownBaseSec', deltaSec: number): void {
+    updateProfileDraft((current) => {
+      const nextValue = field === 'workDurationSec'
+        ? Math.min(MAX_WORK_DURATION_SEC, Math.max(MIN_WORK_DURATION_SEC, current[field] + deltaSec))
+        : Math.max(0, current[field] + deltaSec);
+      return {
+        ...current,
+        [field]: nextValue
+      };
+    });
+  }
+
+  function updateDraftRecoveryRound(roundIndex: number, deltaSec: number): void {
+    updateProfileDraft((current) => ({
+      ...current,
+      baseRestsSec: current.baseRestsSec.map((value, index) =>
+        index === roundIndex ? Math.max(5, value + deltaSec) : value
+      )
+    }));
+  }
+
+  function handleProfileStepperPressStart(
+    onAdjust: (deltaSec: number) => void,
+    direction: -1 | 1
+  ): void {
+    clearProfileStepperHold();
+    profileStepperHoldRef.current.longPressTriggered = false;
+    profileStepperHoldRef.current.timeoutId = window.setTimeout(() => {
+      profileStepperHoldRef.current.longPressTriggered = true;
+      onAdjust(direction * 5);
+      profileStepperHoldRef.current.intervalId = window.setInterval(() => {
+        onAdjust(direction * 5);
+      }, 120);
+    }, 350);
+  }
+
+  function handleProfileStepperPressEnd(): void {
+    clearProfileStepperHold();
+  }
+
+  function handleSuppressContextMenu(event: Event): void {
+    event.preventDefault();
+  }
+
+  function handleProfileStepperClick(onAdjust: (deltaSec: number) => void, direction: -1 | 1): void {
+    if (profileStepperHoldRef.current.longPressTriggered) {
+      profileStepperHoldRef.current.longPressTriggered = false;
+      return;
+    }
+
+    onAdjust(direction);
+  }
+
   function getDurationOptions(): number[] {
     return Array.from({ length: MAX_WORK_DURATION_SEC - MIN_WORK_DURATION_SEC + 1 }, (_, index) => MIN_WORK_DURATION_SEC + index);
   }
@@ -1299,6 +1756,11 @@ export function WorkoutScreen({
   }
 
   function handleDurationWheelScroll(event: Event): void {
+    if (activeProfile !== null) {
+      scrollDurationWheelToValue(activeProfile.workDurationSec, 'auto');
+      return;
+    }
+
     const target = event.currentTarget as HTMLDivElement | null;
     if (target === null) {
       return;
@@ -1360,6 +1822,7 @@ export function WorkoutScreen({
         'screen'
         + (showMobileHistoryMode ? ' screen--mobile-history' : '')
         + (showHistoryTab ? ' screen--history-tab' : '')
+        + (showSettingsTab ? ' screen--settings-tab' : '')
         + (showSetupRuntimePanels ? ' screen--setup' : '')
       }
       onClick={handleScreenTap as JSX.MouseEventHandler<HTMLElement>}
@@ -1377,7 +1840,7 @@ export function WorkoutScreen({
         <button type="button" className={'desktop-tab-strip__item' + (activeTab === 'settings' ? ' desktop-tab-strip__item--active' : '')} aria-current={activeTab === 'settings' ? 'page' : undefined} onClick={() => handleSelectPrimaryTab('settings')}>Settings</button>
       </nav>
 
-      {(showHistoryTab || showDevicesTab) ? null : <section className={'hero-card hero-card--session ' + phaseClassName + (isSessionActive ? ' hero-card--running' : '')}>
+      {(showHistoryTab || showDevicesTab || showSettingsTab) ? null : <section className={'hero-card hero-card--session ' + phaseClassName + (isSessionActive ? ' hero-card--running' : '')}>
         <p className="eyebrow">{controllerState.connectedDeviceName ?? 'No HR monitor connected'}</p>
         {isSessionActive || startupCountdownSec !== null ? <h1 className="timer">{startupCountdownSec === null ? formatClock(phaseRemainingSec) : '00:0' + String(startupCountdownSec)}</h1> : null}
         <div className="hero-scrub-slot" aria-live="polite">
@@ -1411,6 +1874,116 @@ export function WorkoutScreen({
       </section>}
 
       <section className="status-grid">
+        {showSettingsTab ? <article className="panel panel-wide panel--settings">
+          <h2>Settings</h2>
+          <div className="settings-panel">
+            <div className="settings-section">
+              <span className="settings-section__eyebrow">Profiles</span>
+              <h3>Session Profiles</h3>
+              <div className="settings-profile-list">
+                {sessionProfiles.map((profile) => (
+                  <button
+                    key={profile.id}
+                    type="button"
+                    className={'settings-profile-list__item' + (profile.id === selectedProfileId ? ' settings-profile-list__item--active' : '')}
+                    onClick={() => setSelectedProfileId(profile.id)}
+                  >
+                    <strong>{profile.name}</strong>
+                    <span>{profile.id === activeProfileId ? 'Active' : profile.isDefault ? 'Default' : 'Profile'}</span>
+                  </button>
+                ))}
+              </div>
+              {transferMessage !== null ? <p className={'panel-copy' + (transferMessageIsError ? ' panel-copy--alert' : '')}>{transferMessage}</p> : null}
+            </div>
+            {profileDraft === null ? null : <>
+              <div className="settings-section">
+                <span className="settings-section__eyebrow">Profile</span>
+                <div className="settings-field">
+                  <label htmlFor="profile-name">Name</label>
+                  <input
+                    id="profile-name"
+                    type="text"
+                    value={profileDraft.name}
+                    onInput={(event) => updateProfileDraft((current) => ({ ...current, name: (event.currentTarget as HTMLInputElement).value }))}
+                    disabled={profileDraft.isDefault}
+                  />
+                </div>
+                <div className="settings-field">
+                  <label htmlFor="profile-notes">Notes</label>
+                  <textarea
+                    id="profile-notes"
+                    rows={3}
+                    value={profileDraft.notes ?? ''}
+                    onInput={(event) => updateProfileDraft((current) => ({ ...current, notes: (event.currentTarget as HTMLTextAreaElement).value }))}
+                    disabled={profileDraft.isDefault}
+                  />
+                </div>
+                <div className="settings-actions">
+                  <button type="button" onClick={() => void handleCopyProfile()}>Copy Profile</button>
+                  <button type="button" onClick={() => void handleSetActiveProfile(profileDraft.id)} disabled={profileDraft.id === activeProfileId}>Set Active</button>
+                  <button type="button" onClick={() => void handleSaveProfileDraft()} disabled={profileDraft.isDefault}>Save Changes</button>
+                  <button type="button" className="history-item-delete" onClick={() => void handleDeleteProfile(profileDraft.id)} disabled={profileDraft.isDefault}>Delete Profile</button>
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <span className="settings-section__eyebrow">Timing</span>
+                <div className="settings-stepper-list">
+                  {([
+                    ['Work Duration', profileDraft.workDurationSec, (deltaSec: number) => updateDraftStepValue('workDurationSec', deltaSec)]
+                  ] as const).map(([label, value, onAdjust]) => (
+                    <div key={label} className="settings-stepper-row">
+                      <span>{label}</span>
+                      <div className="settings-stepper-control">
+                        <button
+                          type="button"
+                          onContextMenu={handleSuppressContextMenu as JSX.GenericEventHandler<HTMLButtonElement>}
+                          onTouchStart={() => handleProfileStepperPressStart(onAdjust, -1)}
+                          onTouchEnd={handleProfileStepperPressEnd}
+                          onTouchCancel={handleProfileStepperPressEnd}
+                          onMouseDown={() => handleProfileStepperPressStart(onAdjust, -1)}
+                          onMouseUp={handleProfileStepperPressEnd}
+                          onMouseLeave={handleProfileStepperPressEnd}
+                          onClick={() => handleProfileStepperClick(onAdjust, -1)}
+                          disabled={profileDraft.isDefault}
+                        >
+                          -
+                        </button>
+                        <strong>{value}s</strong>
+                        <button
+                          type="button"
+                          onContextMenu={handleSuppressContextMenu as JSX.GenericEventHandler<HTMLButtonElement>}
+                          onTouchStart={() => handleProfileStepperPressStart(onAdjust, 1)}
+                          onTouchEnd={handleProfileStepperPressEnd}
+                          onTouchCancel={handleProfileStepperPressEnd}
+                          onMouseDown={() => handleProfileStepperPressStart(onAdjust, 1)}
+                          onMouseUp={handleProfileStepperPressEnd}
+                          onMouseLeave={handleProfileStepperPressEnd}
+                          onClick={() => handleProfileStepperClick(onAdjust, 1)}
+                          disabled={profileDraft.isDefault}
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <span className="settings-section__eyebrow">Recovery</span>
+                <div className="settings-round-list">
+                  {renderRecoveryRow('warmup', 'Warmup', profileDraft.warmupSec, (deltaSec) => updateDraftStepValue('warmupSec', deltaSec), null)}
+                  {profileDraft.baseRestsSec.map((restSec, roundIndex) =>
+                    renderRecoveryRow(`round-${roundIndex}`, 'Round ' + String(roundIndex + 1), restSec, (deltaSec) => updateDraftRecoveryRound(roundIndex, deltaSec), roundIndex)
+                  )}
+                  {renderRecoveryRow('cooldown', 'Cooldown', profileDraft.cooldownBaseSec, (deltaSec) => updateDraftStepValue('cooldownBaseSec', deltaSec), null)}
+                </div>
+              </div>
+            </>}
+          </div>
+        </article> : null}
+
         {showDevicesTab ? <article className="panel panel-wide panel--devices">
           <h2>Devices</h2>
           <div className="devices-panel">
@@ -1485,7 +2058,7 @@ export function WorkoutScreen({
                     <div className="duration-wheel-shell__highlight" aria-hidden="true" />
                     <div
                       ref={durationWheelRef}
-                      className="duration-wheel"
+                      className={'duration-wheel' + (activeProfile !== null ? ' duration-wheel--locked' : '')}
                       onScroll={handleDurationWheelScroll as JSX.UIEventHandler<HTMLDivElement>}
                     >
                       <div className="duration-wheel__spacer" aria-hidden="true" />
@@ -1498,7 +2071,7 @@ export function WorkoutScreen({
                             setWorkDurationSec(durationSec);
                             scrollDurationWheelToValue(durationSec);
                           }}
-                          disabled={isSessionActive || isConnecting}
+                          disabled={true}
                         >
                           <span>{durationSec}</span>
                           <small>sec</small>
@@ -1675,7 +2248,7 @@ export function WorkoutScreen({
                     <div className="history-detail-copy">
                       <h3 className="history-detail-date">{formatSessionDate(selectedHistorySession.startedAt)}</h3>
                       <p className="panel-copy">
-                        {selectedHistorySession.status}. {selectedHistorySession.comparisonEligible ? 'Eligible for comparison.' : 'Not eligible for comparison.'}
+                        {selectedHistorySession.profileName}. {selectedHistorySession.status}. {selectedHistorySession.comparisonEligible ? 'Eligible for comparison.' : 'Not eligible for comparison.'}
                       </p>
                     </div>
                     <button type="button" className="history-nav-button" onClick={() => navigateHistoryByOffset(1)} aria-label="Show older session">
@@ -1794,7 +2367,7 @@ export function WorkoutScreen({
                   >
                     <span>{formatSessionDate(session.startedAt)}</span>
                     <strong>{session.workDurationSec}s work</strong>
-                    <span>{formatSessionBadge(session)}</span>
+                    <span>{session.profileName} · {formatSessionBadge(session)}</span>
                   </button>
                   <button
                     type="button"
@@ -1879,13 +2452,18 @@ function parseStorageBackup(value: unknown): StorageBackupRecord {
     throw new Error('Import file contains invalid app settings.');
   }
 
+  if (value.sessionProfiles !== undefined && Array.isArray(value.sessionProfiles) === false) {
+    throw new Error('Import file contains invalid session profiles.');
+  }
+
   return {
     version: 1,
     exportedAt: typeof value.exportedAt === 'string' ? value.exportedAt : new Date().toISOString(),
     sessions: value.sessions as SessionRecord[],
     heartRateSamples: value.heartRateSamples as import('../../infrastructure/storage/types').HeartRateSampleRecord[],
     intervalStats: value.intervalStats as IntervalStatRecord[],
-    appSettings: value.appSettings === undefined ? null : value.appSettings as StorageBackupRecord['appSettings']
+    appSettings: value.appSettings === undefined ? null : value.appSettings as StorageBackupRecord['appSettings'],
+    sessionProfiles: value.sessionProfiles === undefined ? [] : value.sessionProfiles as StorageBackupRecord['sessionProfiles']
   };
 }
 

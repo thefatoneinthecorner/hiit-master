@@ -7,14 +7,17 @@ import {
   importStorageBackup,
   IntervalStatRepository,
   openDatabase,
+  SessionProfileRepository,
   SessionRepository
 } from '../infrastructure/storage/db';
 import type {
   AppSettingsRecord,
   HeartRateSampleRecord,
   IntervalStatRecord,
+  SessionProfileRecord,
   SessionRecord
 } from '../infrastructure/storage/types';
+import { createDefaultSessionProfile, DEFAULT_PROFILE_ID } from '../domain/workout/profile';
 
 function createSessionRecord(overrides: Partial<SessionRecord> = {}): SessionRecord {
   return {
@@ -22,6 +25,7 @@ function createSessionRecord(overrides: Partial<SessionRecord> = {}): SessionRec
     startedAt: '2026-03-30T00:00:00.000Z',
     completedAt: '2026-03-30T00:25:00.000Z',
     status: 'completed',
+    profileName: 'Profile',
     workDurationSec: 20,
     warmupSec: 300,
     baseRestsSec: [90, 75, 60, 45, 35, 30, 30, 30, 30, 30, 30, 30],
@@ -135,7 +139,7 @@ describe('storage repositories', () => {
   it('saves and loads app settings', async () => {
     const database = await openDatabase();
     const repository = new AppSettingsRepository(database);
-    const settings: AppSettingsRecord = { id: 'app_settings', lastWorkDurationSec: 22 };
+    const settings: AppSettingsRecord = { id: 'app_settings', activeProfileId: DEFAULT_PROFILE_ID, lastWorkDurationSec: 22 };
 
     await repository.save(settings);
     const loaded = await repository.get();
@@ -150,7 +154,8 @@ describe('storage repositories', () => {
       sessions: new SessionRepository(database),
       heartRateSamples: new HeartRateSampleRepository(database),
       intervalStats: new IntervalStatRepository(database),
-      appSettings: new AppSettingsRepository(database)
+      appSettings: new AppSettingsRepository(database),
+      sessionProfiles: new SessionProfileRepository(database)
     };
 
     await storage.sessions.save(createSessionRecord({ id: 'session-export' }));
@@ -160,7 +165,8 @@ describe('storage repositories', () => {
     await storage.intervalStats.replaceForSession('session-export', [
       { id: 'stat-export', sessionId: 'session-export', roundIndex: 0, peakBpm: 150, troughBpm: 120, deltaBpm: 30, analysisVersion: 1 }
     ]);
-    await storage.appSettings.save({ id: 'app_settings', lastWorkDurationSec: 24 });
+    await storage.appSettings.save({ id: 'app_settings', activeProfileId: DEFAULT_PROFILE_ID, lastWorkDurationSec: 24 });
+    await storage.sessionProfiles.replaceAll([createDefaultSessionProfile(24)]);
 
     const backup = await exportStorageBackup(storage);
 
@@ -174,7 +180,7 @@ describe('storage repositories', () => {
     expect((await storage.sessions.listAll()).map((record) => record.id)).toEqual(['session-export']);
     expect((await storage.heartRateSamples.listAll()).map((record) => record.id)).toEqual(['sample-export']);
     expect((await storage.intervalStats.listAll()).map((record) => record.id)).toEqual(['stat-export']);
-    expect(await storage.appSettings.get()).toEqual({ id: 'app_settings', lastWorkDurationSec: 24 });
-    closeDatabase(database);
+    expect(await storage.appSettings.get()).toEqual({ id: 'app_settings', activeProfileId: DEFAULT_PROFILE_ID, lastWorkDurationSec: 24 });
+  closeDatabase(database);
   });
 });

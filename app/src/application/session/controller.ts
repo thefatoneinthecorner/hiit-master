@@ -3,7 +3,7 @@ import type { HeartRateSample } from '../../domain/analysis/types';
 import { isComparisonEligible } from '../../domain/session/rules';
 import type { SessionStatus } from '../../domain/session/types';
 import { getPhaseAtElapsedSec, createWorkoutPlan } from '../../domain/workout/plan';
-import type { PhaseType, WorkoutPlan } from '../../domain/workout/types';
+import type { PhaseType, WorkoutPlan, WorkoutProfileTiming } from '../../domain/workout/types';
 import type { IntervalStatRecord, SessionRecord } from '../../infrastructure/storage/types';
 import type { StorageRepositories } from '../../infrastructure/storage/db';
 import type { WorkoutSessionControllerState } from './types';
@@ -11,6 +11,8 @@ import type { WorkoutSessionControllerState } from './types';
 interface ActiveSessionContext {
   sessionId: string;
   startedAtMs: number;
+  profileName: string;
+  profile: WorkoutProfileTiming;
   workoutPlan: WorkoutPlan;
   workDurationSec: number;
   elapsedSec: number;
@@ -55,6 +57,7 @@ export class WorkoutSessionController {
       controllerStatus: this.controllerStatus,
       sessionId: this.activeSession?.sessionId ?? null,
       sessionStartedAtMs: this.activeSession?.startedAtMs ?? null,
+      activeProfileName: this.activeSession?.profileName ?? null,
       workDurationSec: this.activeSession?.workDurationSec ?? null,
       elapsedSec: this.activeSession?.elapsedSec ?? 0,
       currentPhaseType: this.activeSession?.currentPhaseType ?? null,
@@ -68,6 +71,7 @@ export class WorkoutSessionController {
       currentBpm: this.activeSession?.currentBpm ?? this.currentBpm,
       previousComparisonSessionId: this.previousComparisonSessionId,
       workoutPlan: this.activeSession?.workoutPlan ?? null,
+      activeProfile: this.activeSession?.profile ?? null,
       currentIntervalStats,
       currentHeartRateSamples: this.activeSession === null ? [] : [...this.activeSession.samples]
     };
@@ -97,12 +101,12 @@ export class WorkoutSessionController {
     this.connectHeartRate(deviceName);
   }
 
-  async startSession(workDurationSec: number, startedAtMs: number): Promise<void> {
+  async startSession(profileName: string, profile: WorkoutProfileTiming, startedAtMs: number): Promise<void> {
     if (this.hrConnectionStatus !== 'connected') {
       throw new Error('Cannot start session without a connected heart-rate monitor');
     }
 
-    const workoutPlan = createWorkoutPlan(workDurationSec);
+    const workoutPlan = createWorkoutPlan(profile);
     const phaseAtStart = getPhaseAtElapsedSec(workoutPlan, 0);
     const sessionId = this.createId();
     const previousComparisonSession = await this.storage.sessions.getPreviousComparisonEligibleSession(sessionId);
@@ -110,6 +114,8 @@ export class WorkoutSessionController {
     this.activeSession = {
       sessionId,
       startedAtMs,
+      profileName,
+      profile,
       workoutPlan,
       workDurationSec: workoutPlan.workDurationSec,
       elapsedSec: 0,
@@ -124,7 +130,6 @@ export class WorkoutSessionController {
     this.comparisonEligible = false;
     this.previousComparisonSessionId = previousComparisonSession?.id ?? null;
 
-    await this.storage.appSettings.save({ id: 'app_settings', lastWorkDurationSec: workoutPlan.workDurationSec });
     await this.persistSessionRecord('running');
   }
 
@@ -282,13 +287,14 @@ export class WorkoutSessionController {
       startedAt: new Date(this.activeSession.startedAtMs).toISOString(),
       completedAt: completedAtMs === undefined ? null : new Date(completedAtMs).toISOString(),
       status,
+      profileName: this.activeSession.profileName,
       workDurationSec: this.activeSession.workDurationSec,
       warmupSec: this.activeSession.workoutPlan.warmupSec,
       baseRestsSec: this.activeSession.workoutPlan.baseRestsSec,
       actualRestsSec: this.activeSession.workoutPlan.actualRestsSec,
       cooldownBaseSec: this.activeSession.workoutPlan.cooldownSec,
       totalPlannedDurationSec: this.activeSession.workoutPlan.totalDurationSec,
-      roundsPlanned: 13,
+      roundsPlanned: this.activeSession.workoutPlan.roundsPlanned,
       hasHeartRateData: this.activeSession.samples.some((sample) => sample.isMissing === false),
       hrCoverageComplete: this.isCompromised === false,
       isCompromised: this.isCompromised,

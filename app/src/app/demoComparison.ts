@@ -94,6 +94,7 @@ function createDemoSession(id: string, notes: string): SessionRecord {
       startedAt: '2026-03-29T12:00:00.000Z',
       completedAt: '2026-03-29T12:23:05.000Z',
       status: 'completed',
+      profileName: 'Profile',
       workDurationSec: 35,
       warmupSec: 300,
       baseRestsSec: [90, 75, 60, 45, 35, 30, 30, 30, 30, 30, 30, 30],

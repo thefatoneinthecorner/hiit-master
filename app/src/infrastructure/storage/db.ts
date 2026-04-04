@@ -2,21 +2,23 @@ import type {
   AppSettingsRecord,
   HeartRateSampleRecord,
   IntervalStatRecord,
+  SessionProfileRecord,
   SessionRecord,
   StorageBackupRecord
 } from './types';
 
 export const DB_NAME = 'hiit-master-rebuild';
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 export const STORE_SESSIONS = 'sessions';
 export const STORE_HEART_RATE_SAMPLES = 'heartRateSamples';
 export const STORE_INTERVAL_STATS = 'intervalStats';
 export const STORE_APP_SETTINGS = 'appSettings';
+export const STORE_SESSION_PROFILES = 'sessionProfiles';
 
 export interface HiitMasterDatabase extends IDBDatabase {
   transaction(
-    storeNames: typeof STORE_SESSIONS | typeof STORE_HEART_RATE_SAMPLES | typeof STORE_INTERVAL_STATS | typeof STORE_APP_SETTINGS | Array<string>,
+    storeNames: typeof STORE_SESSIONS | typeof STORE_HEART_RATE_SAMPLES | typeof STORE_INTERVAL_STATS | typeof STORE_APP_SETTINGS | typeof STORE_SESSION_PROFILES | Array<string>,
     mode?: IDBTransactionMode,
     options?: IDBTransactionOptions
   ): IDBTransaction;
@@ -54,6 +56,11 @@ export function openDatabase(): Promise<HiitMasterDatabase> {
 
       if (database.objectStoreNames.contains(STORE_APP_SETTINGS) === false) {
         database.createObjectStore(STORE_APP_SETTINGS, { keyPath: 'id' });
+      }
+
+      if (database.objectStoreNames.contains(STORE_SESSION_PROFILES) === false) {
+        const store = database.createObjectStore(STORE_SESSION_PROFILES, { keyPath: 'id' });
+        store.createIndex('name', 'name', { unique: true });
       }
     };
 
@@ -115,6 +122,22 @@ export class SessionRepository {
   async clear(): Promise<void> {
     const transaction = this.database.transaction(STORE_SESSIONS, 'readwrite');
     transaction.objectStore(STORE_SESSIONS).clear();
+    await transactionDone(transaction);
+  }
+
+  async renameProfile(profileName: string, nextProfileName: string): Promise<void> {
+    const records = await this.listAll();
+    const transaction = this.database.transaction(STORE_SESSIONS, 'readwrite');
+    const store = transaction.objectStore(STORE_SESSIONS);
+
+    for (const record of records) {
+      if (record.profileName !== profileName) {
+        continue;
+      }
+
+      store.put({ ...record, profileName: nextProfileName });
+    }
+
     await transactionDone(transaction);
   }
 
@@ -311,11 +334,61 @@ export class AppSettingsRepository {
   }
 }
 
+export class SessionProfileRepository {
+  constructor(private readonly database: HiitMasterDatabase) {}
+
+  async save(record: SessionProfileRecord): Promise<void> {
+    const transaction = this.database.transaction(STORE_SESSION_PROFILES, 'readwrite');
+    transaction.objectStore(STORE_SESSION_PROFILES).put(record);
+    await transactionDone(transaction);
+  }
+
+  async getById(id: string): Promise<SessionProfileRecord | null> {
+    const transaction = this.database.transaction(STORE_SESSION_PROFILES, 'readonly');
+    const result = await requestToPromise(transaction.objectStore(STORE_SESSION_PROFILES).get(id));
+    await transactionDone(transaction);
+    return (result as SessionProfileRecord | undefined) ?? null;
+  }
+
+  async listAll(): Promise<SessionProfileRecord[]> {
+    const transaction = this.database.transaction(STORE_SESSION_PROFILES, 'readonly');
+    const records = await requestToPromise(transaction.objectStore(STORE_SESSION_PROFILES).getAll());
+    await transactionDone(transaction);
+
+    return (records as SessionProfileRecord[]).sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  async deleteById(id: string): Promise<void> {
+    const transaction = this.database.transaction(STORE_SESSION_PROFILES, 'readwrite');
+    transaction.objectStore(STORE_SESSION_PROFILES).delete(id);
+    await transactionDone(transaction);
+  }
+
+  async clear(): Promise<void> {
+    const transaction = this.database.transaction(STORE_SESSION_PROFILES, 'readwrite');
+    transaction.objectStore(STORE_SESSION_PROFILES).clear();
+    await transactionDone(transaction);
+  }
+
+  async replaceAll(records: SessionProfileRecord[]): Promise<void> {
+    const transaction = this.database.transaction(STORE_SESSION_PROFILES, 'readwrite');
+    const store = transaction.objectStore(STORE_SESSION_PROFILES);
+    store.clear();
+
+    for (const record of records) {
+      store.put(record);
+    }
+
+    await transactionDone(transaction);
+  }
+}
+
 export interface StorageRepositories {
   sessions: SessionRepository;
   heartRateSamples: HeartRateSampleRepository;
   intervalStats: IntervalStatRepository;
   appSettings: AppSettingsRepository;
+  sessionProfiles: SessionProfileRepository;
 }
 
 export async function createStorageRepositories(): Promise<StorageRepositories> {
@@ -325,7 +398,8 @@ export async function createStorageRepositories(): Promise<StorageRepositories> 
     sessions: new SessionRepository(database),
     heartRateSamples: new HeartRateSampleRepository(database),
     intervalStats: new IntervalStatRepository(database),
-    appSettings: new AppSettingsRepository(database)
+    appSettings: new AppSettingsRepository(database),
+    sessionProfiles: new SessionProfileRepository(database)
   };
 }
 
@@ -334,11 +408,12 @@ export function closeDatabase(database: IDBDatabase): void {
 }
 
 export async function exportStorageBackup(storage: StorageRepositories): Promise<StorageBackupRecord> {
-  const [sessions, heartRateSamples, intervalStats, appSettings] = await Promise.all([
+  const [sessions, heartRateSamples, intervalStats, appSettings, sessionProfiles] = await Promise.all([
     storage.sessions.listAll(),
     storage.heartRateSamples.listAll(),
     storage.intervalStats.listAll(),
-    storage.appSettings.get()
+    storage.appSettings.get(),
+    storage.sessionProfiles.listAll()
   ]);
 
   return {
@@ -347,7 +422,8 @@ export async function exportStorageBackup(storage: StorageRepositories): Promise
     sessions,
     heartRateSamples,
     intervalStats,
-    appSettings
+    appSettings,
+    sessionProfiles
   };
 }
 
@@ -356,4 +432,5 @@ export async function importStorageBackup(storage: StorageRepositories, backup: 
   await storage.heartRateSamples.replaceAll(backup.heartRateSamples);
   await storage.intervalStats.replaceAll(backup.intervalStats);
   await storage.appSettings.replace(backup.appSettings);
+  await storage.sessionProfiles.replaceAll(backup.sessionProfiles ?? []);
 }

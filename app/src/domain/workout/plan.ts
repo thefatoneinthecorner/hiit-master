@@ -3,10 +3,9 @@ import {
   COOLDOWN_BASE_SEC,
   MAX_WORK_DURATION_SEC,
   MIN_WORK_DURATION_SEC,
-  ROUNDS_PLANNED,
   WARMUP_SEC
 } from './constants';
-import type { PhaseAtElapsed, PhaseSegment, RecoveryWindow, WorkoutPlan, WorkWindow } from './types';
+import type { PhaseAtElapsed, PhaseSegment, RecoveryWindow, WorkoutPlan, WorkWindow, WorkoutProfileTiming } from './types';
 
 export function calculateActualRestSec(baseRestSec: number, workDurationSec: number): number {
   return Math.max(5, baseRestSec + 30 - workDurationSec);
@@ -16,17 +15,26 @@ export function clampWorkDurationSec(workDurationSec: number): number {
   return Math.min(MAX_WORK_DURATION_SEC, Math.max(MIN_WORK_DURATION_SEC, workDurationSec));
 }
 
-export function createWorkoutPlan(workDurationSec: number): WorkoutPlan {
-  const clampedWorkDurationSec = clampWorkDurationSec(workDurationSec);
-  const actualRestsSec = BASE_RESTS_SEC.map((baseRestSec) => calculateActualRestSec(baseRestSec, clampedWorkDurationSec));
-  const cooldownSec = calculateActualRestSec(COOLDOWN_BASE_SEC, clampedWorkDurationSec);
+export function createWorkoutPlan(workout: number | WorkoutProfileTiming): WorkoutPlan {
+  const profile = typeof workout === 'number'
+    ? {
+      workDurationSec: workout,
+      warmupSec: WARMUP_SEC,
+      baseRestsSec: [...BASE_RESTS_SEC],
+      cooldownBaseSec: COOLDOWN_BASE_SEC
+    }
+    : workout;
+  const clampedWorkDurationSec = clampWorkDurationSec(profile.workDurationSec);
+  const actualRestsSec = profile.baseRestsSec.map((baseRestSec) => calculateActualRestSec(baseRestSec, clampedWorkDurationSec));
+  const cooldownSec = calculateActualRestSec(profile.cooldownBaseSec, clampedWorkDurationSec);
   const phases: PhaseSegment[] = [];
+  const roundsPlanned = profile.baseRestsSec.length + 1;
 
   let elapsedSec = 0;
-  phases.push({ phaseType: 'warmup', roundIndex: null, startSec: elapsedSec, endSec: elapsedSec + WARMUP_SEC });
-  elapsedSec += WARMUP_SEC;
+  phases.push({ phaseType: 'warmup', roundIndex: null, startSec: elapsedSec, endSec: elapsedSec + profile.warmupSec });
+  elapsedSec += profile.warmupSec;
 
-  for (let roundIndex = 0; roundIndex < ROUNDS_PLANNED; roundIndex += 1) {
+  for (let roundIndex = 0; roundIndex < roundsPlanned; roundIndex += 1) {
     phases.push({ phaseType: 'work', roundIndex, startSec: elapsedSec, endSec: elapsedSec + clampedWorkDurationSec });
     elapsedSec += clampedWorkDurationSec;
 
@@ -42,11 +50,12 @@ export function createWorkoutPlan(workDurationSec: number): WorkoutPlan {
 
   return {
     workDurationSec: clampedWorkDurationSec,
-    warmupSec: WARMUP_SEC,
-    baseRestsSec: [...BASE_RESTS_SEC],
+    warmupSec: profile.warmupSec,
+    baseRestsSec: [...profile.baseRestsSec],
     actualRestsSec,
     cooldownSec,
     totalDurationSec: elapsedSec,
+    roundsPlanned,
     phases
   };
 }

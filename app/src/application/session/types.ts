@@ -1,5 +1,5 @@
 import type { HeartRateSample, IntervalStat } from '../../domain/analysis/types';
-import type { PhaseType, WorkoutPlan } from '../../domain/workout/types';
+import type { PhaseType, WorkoutPlan, WorkoutProfileTiming } from '../../domain/workout/types';
 import type { SessionStatus } from '../../domain/session/types';
 
 export type HeartRateConnectionStatus = 'disconnected' | 'connected';
@@ -9,6 +9,7 @@ export interface WorkoutSessionControllerState {
   controllerStatus: ControllerStatus;
   sessionId: string | null;
   sessionStartedAtMs: number | null;
+  activeProfileName: string | null;
   workDurationSec: number | null;
   elapsedSec: number;
   currentPhaseType: PhaseType | null;
@@ -22,6 +23,7 @@ export interface WorkoutSessionControllerState {
   currentBpm: number | null;
   previousComparisonSessionId: string | null;
   workoutPlan: WorkoutPlan | null;
+  activeProfile: WorkoutProfileTiming | null;
   currentIntervalStats: IntervalStat[];
   currentHeartRateSamples: HeartRateSample[];
 }

@@ -5,8 +5,10 @@ import type {
   AppSettingsRecord,
   HeartRateSampleRecord,
   IntervalStatRecord,
+  SessionProfileRecord,
   SessionRecord
 } from '../infrastructure/storage/types';
+import { createDefaultSessionProfile, DEFAULT_PROFILE_ID } from '../domain/workout/profile';
 
 class FakeSessionRepository {
   records: SessionRecord[] = [];
@@ -57,7 +59,7 @@ class FakeIntervalStatRepository {
 }
 
 class FakeAppSettingsRepository {
-  record: AppSettingsRecord | null = null;
+  record: AppSettingsRecord | null = { id: 'app_settings', activeProfileId: DEFAULT_PROFILE_ID };
 
   async save(record: AppSettingsRecord): Promise<void> {
     this.record = record;
@@ -68,12 +70,25 @@ class FakeAppSettingsRepository {
   }
 }
 
+class FakeSessionProfileRepository {
+  records: SessionProfileRecord[] = [createDefaultSessionProfile()];
+
+  async replaceAll(records: SessionProfileRecord[]): Promise<void> {
+    this.records = [...records];
+  }
+
+  async listAll(): Promise<SessionProfileRecord[]> {
+    return [...this.records];
+  }
+}
+
 function createStorage(): StorageRepositories {
   return {
     sessions: new FakeSessionRepository() as unknown as StorageRepositories['sessions'],
     heartRateSamples: new FakeHeartRateSampleRepository() as unknown as StorageRepositories['heartRateSamples'],
     intervalStats: new FakeIntervalStatRepository() as unknown as StorageRepositories['intervalStats'],
-    appSettings: new FakeAppSettingsRepository() as unknown as StorageRepositories['appSettings']
+    appSettings: new FakeAppSettingsRepository() as unknown as StorageRepositories['appSettings'],
+    sessionProfiles: new FakeSessionProfileRepository() as unknown as StorageRepositories['sessionProfiles']
   };
 }
 
@@ -87,7 +102,7 @@ describe('WorkoutSessionController', () => {
       })()
     });
 
-    await expect(controller.startSession(20, Date.parse('2026-03-30T00:00:00.000Z'))).rejects.toThrow(
+    await expect(controller.startSession('Profile', createDefaultSessionProfile(), Date.parse('2026-03-30T00:00:00.000Z'))).rejects.toThrow(
       'Cannot start session without a connected heart-rate monitor'
     );
   });
@@ -136,7 +151,7 @@ describe('WorkoutSessionController', () => {
     });
 
     controller.connectHeartRate('Polar H10');
-    await controller.startSession(20, Date.parse('2026-03-30T00:00:00.000Z'));
+    await controller.startSession('Profile', createDefaultSessionProfile(), Date.parse('2026-03-30T00:00:00.000Z'));
 
     const state = controller.getState();
     const sessions = await storage.sessions.listAll();
@@ -159,7 +174,7 @@ describe('WorkoutSessionController', () => {
 
     controller.connectHeartRate('Polar H10');
     const startedAtMs = Date.parse('2026-03-30T00:00:00.000Z');
-    await controller.startSession(20, startedAtMs);
+    await controller.startSession('Profile', createDefaultSessionProfile(), startedAtMs);
     await controller.recordHeartRateSample(startedAtMs + 301_000, 140);
     await controller.disconnectHeartRate(startedAtMs + 302_000);
     await controller.tick(303, startedAtMs + 303_000);
@@ -183,7 +198,7 @@ describe('WorkoutSessionController', () => {
 
     controller.connectHeartRate('Polar H10');
     const startedAtMs = Date.parse('2026-03-30T00:00:00.000Z');
-    await controller.startSession(20, startedAtMs);
+    await controller.startSession('Profile', createDefaultSessionProfile(), startedAtMs);
     await controller.recordHeartRateSample(startedAtMs + 301_000, 145);
     await controller.disconnectHeartRate(startedAtMs + 302_000);
     controller.reconnectHeartRate('Polar H10');

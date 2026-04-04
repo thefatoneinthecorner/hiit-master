@@ -14,7 +14,15 @@ export interface WorkoutPlan {
   actualRestsSec: number[];
   cooldownSec: number;
   totalDurationSec: number;
+  roundsPlanned: number;
   phases: PhaseSegment[];
+}
+
+export interface WorkoutProfileTiming {
+  workDurationSec: number;
+  warmupSec: number;
+  baseRestsSec: number[];
+  cooldownBaseSec: number;
 }
 
 export interface WorkWindow {

@@ -5,6 +5,7 @@ export interface SessionRecord {
   startedAt: string;
   completedAt: string | null;
   status: SessionStatus;
+  profileName: string;
   workDurationSec: number;
   warmupSec: number;
   baseRestsSec: number[];
@@ -42,7 +43,19 @@ export interface IntervalStatRecord {
 
 export interface AppSettingsRecord {
   id: 'app_settings';
-  lastWorkDurationSec: number;
+  activeProfileId: string;
+  lastWorkDurationSec?: number;
+}
+
+export interface SessionProfileRecord {
+  id: string;
+  name: string;
+  workDurationSec: number;
+  warmupSec: number;
+  baseRestsSec: number[];
+  cooldownBaseSec: number;
+  notes: string | null;
+  isDefault: boolean;
 }
 
 export interface StorageBackupRecord {
@@ -52,4 +65,5 @@ export interface StorageBackupRecord {
   heartRateSamples: HeartRateSampleRecord[];
   intervalStats: IntervalStatRecord[];
   appSettings: AppSettingsRecord | null;
+  sessionProfiles: SessionProfileRecord[];
 }

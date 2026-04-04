@@ -44,3 +44,11 @@ Current product backlog:
 - V2: Session notes / annotations
 - V2: Overall weighted recovery metric based on delta diffs
 - V2: Apple Watch integration
+
+Possible bugs to verify:
+- Desktop/Mac trackpad vertical swipe/scroll behaviour may feel inconsistent on some screens. Dragging works, but swipe-up gesture behaviour may not feel native.
+
+Open design/data issue:
+- Editing a session profile after sessions have been recorded against it invalidates historical meaning. We likely need either:
+- make profiles read-only once referenced by any saved session, or
+- introduce profile versioning and persist the version used by each session.

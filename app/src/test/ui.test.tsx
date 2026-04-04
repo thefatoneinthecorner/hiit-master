@@ -8,8 +8,10 @@ import type {
   AppSettingsRecord,
   HeartRateSampleRecord,
   IntervalStatRecord,
+  SessionProfileRecord,
   SessionRecord
 } from '../infrastructure/storage/types';
+import { createDefaultSessionProfile, DEFAULT_PROFILE_ID } from '../domain/workout/profile';
 
 class FakeSessionRepository {
   records: SessionRecord[] = [];
@@ -87,6 +89,22 @@ class FakeAppSettingsRepository {
   }
 }
 
+class FakeSessionProfileRepository {
+  records: SessionProfileRecord[];
+
+  constructor(initialProfiles: SessionProfileRecord[]) {
+    this.records = initialProfiles;
+  }
+
+  async listAll(): Promise<SessionProfileRecord[]> {
+    return [...this.records];
+  }
+
+  async replaceAll(records: SessionProfileRecord[]): Promise<void> {
+    this.records = [...records];
+  }
+}
+
 class FakeHeartRateMonitor implements HeartRateMonitor {
   constructor(private readonly callbacks: HeartRateMonitorCallbacks) {}
 
@@ -123,13 +141,14 @@ function createStorage(initialSettings: AppSettingsRecord | null): StorageReposi
     sessions: new FakeSessionRepository() as unknown as StorageRepositories['sessions'],
     heartRateSamples: new FakeHeartRateSampleRepository() as unknown as StorageRepositories['heartRateSamples'],
     intervalStats: new FakeIntervalStatRepository() as unknown as StorageRepositories['intervalStats'],
-    appSettings: new FakeAppSettingsRepository(initialSettings) as unknown as StorageRepositories['appSettings']
+    appSettings: new FakeAppSettingsRepository(initialSettings) as unknown as StorageRepositories['appSettings'],
+    sessionProfiles: new FakeSessionProfileRepository([createDefaultSessionProfile(initialSettings?.lastWorkDurationSec ?? 35)]) as unknown as StorageRepositories['sessionProfiles']
   };
 }
 
 describe('WorkoutScreen', () => {
   it('restores the saved work duration and blocks start until a monitor is connected', async () => {
-    const storage = createStorage({ id: 'app_settings', lastWorkDurationSec: 35 });
+    const storage = createStorage({ id: 'app_settings', activeProfileId: DEFAULT_PROFILE_ID, lastWorkDurationSec: 35 });
 
     render(
       <WorkoutScreen
@@ -158,7 +177,7 @@ describe('WorkoutScreen', () => {
   });
 
   it('shows live BPM before the session starts and can reconnect the monitor', async () => {
-    const storage = createStorage({ id: 'app_settings', lastWorkDurationSec: 35 });
+    const storage = createStorage({ id: 'app_settings', activeProfileId: DEFAULT_PROFILE_ID, lastWorkDurationSec: 35 });
     let monitor: FakeHeartRateMonitor | null = null;
 
     render(
@@ -195,7 +214,7 @@ describe('WorkoutScreen', () => {
   });
 
   it('renders a broken live trace when heart-rate coverage drops mid-session', async () => {
-    const storage = createStorage({ id: 'app_settings', lastWorkDurationSec: 35 });
+    const storage = createStorage({ id: 'app_settings', activeProfileId: DEFAULT_PROFILE_ID, lastWorkDurationSec: 35 });
     let nowMs = Date.parse('2026-03-30T12:00:00.000Z');
     let monitor: FakeHeartRateMonitor | null = null;
 
