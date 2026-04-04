@@ -90,6 +90,8 @@ interface ReplayTimedSample {
   bpm: number;
 }
 
+type PrimaryTab = 'home' | 'devices' | 'history' | 'settings';
+
 function getSwipeDebugTargetLabel(target: EventTarget | null): string {
   if (!(target instanceof HTMLElement)) {
     return 'unknown';
@@ -225,6 +227,7 @@ export function WorkoutScreen({
   const [selectedHistorySamples, setSelectedHistorySamples] = useState<HeartRateSample[]>([]);
   const [selectedHistoryPreviousStats, setSelectedHistoryPreviousStats] = useState<IntervalStatRecord[]>([]);
   const [demoFixture, setDemoFixture] = useState<DemoComparisonFixture | null>(null);
+  const [activeTab, setActiveTab] = useState<PrimaryTab>('home');
   const [scrubXPercent, setScrubXPercent] = useState<number | null>(null);
   const [historyScrubXPercent, setHistoryScrubXPercent] = useState<number | null>(null);
   const [startupCountdownSec, setStartupCountdownSec] = useState<number | null>(null);
@@ -982,10 +985,12 @@ export function WorkoutScreen({
     );
   const isScrubberEnabled = controllerState.controllerStatus !== 'running';
   const isPortraitPhone = isPortraitPhoneLayout();
-  const showSetupRuntimePanels = isSessionActive === false && startupCountdownSec === null;
+  const showHistoryTab = activeTab === 'history' && isSessionActive === false && startupCountdownSec === null;
+  const showSetupRuntimePanels = isSessionActive === false && startupCountdownSec === null && showHistoryTab === false;
   const selectedHistorySession = historySessions.find((session) => session.id === selectedHistorySessionId) ?? null;
   const selectedHistoryComparisonSession = getPreviousComparisonSessionForHistory(historySessions, selectedHistorySessionId);
-  const showMobileHistoryMode = isPortraitPhone && mobileHistoryMode && isSessionActive === false && selectedHistorySession !== null;
+  const showMobileHistoryMode = isPortraitPhone && (mobileHistoryMode || showHistoryTab) && isSessionActive === false && selectedHistorySession !== null;
+  const showHistoryPanel = showHistoryTab || controllerState.hrConnectionStatus !== 'connected' || showMobileHistoryMode;
   const selectedHistoryTiming = getChartTimingFromSession(selectedHistorySession);
   const selectedHistoryPreviousTiming = getChartTimingFromSession(selectedHistoryComparisonSession);
   const selectedHistoryComparisonRounds = createComparisonRounds(selectedHistoryStats, selectedHistoryPreviousStats);
@@ -1245,9 +1250,17 @@ export function WorkoutScreen({
     return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 600px) and (orientation: portrait)').matches;
   }
 
-  function handleExitMobileHistoryMode(): void {
-    setMobileHistoryMode(false);
+  function handleSelectPrimaryTab(tab: PrimaryTab): void {
+    if (isSessionActive || startupCountdownSec !== null) {
+      setActiveTab('home');
+      return;
+    }
+
+    setActiveTab(tab);
     setHistoryScrubXPercent(null);
+    if (tab !== 'history') {
+      setMobileHistoryMode(false);
+    }
   }
 
   function getDurationOptions(): number[] {
@@ -1329,6 +1342,7 @@ export function WorkoutScreen({
       className={
         'screen'
         + (showMobileHistoryMode ? ' screen--mobile-history' : '')
+        + (showHistoryTab ? ' screen--history-tab' : '')
         + (showSetupRuntimePanels ? ' screen--setup' : '')
       }
       onClick={handleScreenTap as JSX.MouseEventHandler<HTMLElement>}
@@ -1339,7 +1353,14 @@ export function WorkoutScreen({
       onPointerMove={handleHistorySwipePointerMove as JSX.PointerEventHandler<HTMLElement>}
       onPointerUp={handleHistorySwipePointerUp as JSX.PointerEventHandler<HTMLElement>}
     >
-      <section className={'hero-card hero-card--session ' + phaseClassName + (isSessionActive ? ' hero-card--running' : '')}>
+      <nav className="desktop-tab-strip" aria-label="Primary">
+        <button type="button" className={'desktop-tab-strip__item' + (activeTab === 'home' ? ' desktop-tab-strip__item--active' : '')} aria-current={activeTab === 'home' ? 'page' : undefined} onClick={() => handleSelectPrimaryTab('home')}>Home</button>
+        <button type="button" className={'desktop-tab-strip__item' + (activeTab === 'devices' ? ' desktop-tab-strip__item--active' : '')} aria-current={activeTab === 'devices' ? 'page' : undefined} onClick={() => handleSelectPrimaryTab('devices')}>Devices</button>
+        <button type="button" className={'desktop-tab-strip__item' + (activeTab === 'history' ? ' desktop-tab-strip__item--active' : '')} aria-current={activeTab === 'history' ? 'page' : undefined} onClick={() => handleSelectPrimaryTab('history')}>History</button>
+        <button type="button" className={'desktop-tab-strip__item' + (activeTab === 'settings' ? ' desktop-tab-strip__item--active' : '')} aria-current={activeTab === 'settings' ? 'page' : undefined} onClick={() => handleSelectPrimaryTab('settings')}>Settings</button>
+      </nav>
+
+      {showHistoryTab ? null : <section className={'hero-card hero-card--session ' + phaseClassName + (isSessionActive ? ' hero-card--running' : '')}>
         <p className="eyebrow">{controllerState.connectedDeviceName ?? 'No HR monitor connected'}</p>
         {isSessionActive || startupCountdownSec !== null ? <h1 className="timer">{startupCountdownSec === null ? formatClock(phaseRemainingSec) : '00:0' + String(startupCountdownSec)}</h1> : null}
         <div className="hero-scrub-slot" aria-live="polite">
@@ -1370,7 +1391,7 @@ export function WorkoutScreen({
         <div className="progress-track" aria-hidden="true">
           <div className="progress-bar" style={{ width: String(progressPercent) + '%' }} />
         </div>
-      </section>
+      </section>}
 
       <section className="status-grid">
         {showSetupRuntimePanels ? <>
@@ -1436,8 +1457,6 @@ export function WorkoutScreen({
                 <div className="setup-connected-layout__spacer" aria-hidden="true" />
               </div>
             </>}
-            {/* Data import/export will move to the dedicated Data screen. */}
-            <input ref={importInputRef} type="file" accept="application/json" className="visually-hidden" onChange={(event) => void handleImportFileChange(event)} />
             <p className="panel-copy">
               Uses native BLE inside the iPhone app and Web Bluetooth in supported desktop browsers. Connection drops are recorded through the existing session-controller compromise flow.
             </p>
@@ -1474,7 +1493,7 @@ export function WorkoutScreen({
               Previous comparison source: {controllerState.previousComparisonSessionId ?? 'none yet'}
             </p>
           </article>
-        </> : <article className="panel panel-wide panel--session-controls">
+        </> : showHistoryTab ? null : <article className="panel panel-wide panel--session-controls">
           <div className="session-controls-head">
             <div className="session-runtime-pill">
               <span>Status</span>
@@ -1496,7 +1515,7 @@ export function WorkoutScreen({
           </div>
         </article>}
 
-        <article className="panel panel-wide panel--comparison">
+        {showHistoryTab ? null : <article className="panel panel-wide panel--comparison">
           <h2>Live Comparison</h2>
           {comparisonChart === null ? (
             <p className="panel-copy">Start a session to build live round deltas.</p>
@@ -1571,13 +1590,19 @@ export function WorkoutScreen({
           {comparisonRounds.length > 0 && effectivePreviousIntervalStats.length === 0 ? (
             <p className="panel-copy">No previous comparison-eligible session exists yet, so current deltas are shown without a baseline.</p>
           ) : null}
-        </article>
+        </article>}
 
-        {(controllerState.hrConnectionStatus === 'connected' && showMobileHistoryMode === false) ? null : <article className="panel panel-wide panel--history">
+        {showHistoryPanel ? <article className="panel panel-wide panel--history">
           <h2>History</h2>
+          <div className="history-page-head">
+            <div className="action-stack action-stack--inline history-transfer-actions">
+              <button type="button" onClick={handleImportButtonClick} disabled={isTransferringData}>Import</button>
+              <button type="button" onClick={() => void handleExportData()} disabled={isTransferringData}>{isTransferringData ? 'Working...' : 'Export'}</button>
+            </div>
+            {transferMessage !== null ? <p className={'panel-copy' + (transferMessageIsError ? ' panel-copy--alert' : '')}>{transferMessage}</p> : null}
+          </div>
           {showMobileHistoryMode ? <div className="history-mobile-actions">
             <button type="button" onClick={() => navigateHistoryByOffset(-1)}>Newer</button>
-            <button type="button" onClick={handleExitMobileHistoryMode}>Back</button>
             <button type="button" onClick={() => navigateHistoryByOffset(1)}>Older</button>
             {selectedHistorySession === null ? null : <button type="button" className="history-item-delete" onClick={() => void handleDeleteHistorySession(selectedHistorySession.id)} disabled={deletingHistorySessionId === selectedHistorySession.id}>{deletingHistorySessionId === selectedHistorySession.id ? 'Deleting...' : 'Delete'}</button>}
           </div> : null}
@@ -1587,9 +1612,24 @@ export function WorkoutScreen({
                 <p className="panel-copy">Choose a stored session to inspect its round metrics.</p>
               ) : (
                 <>
-                  <p className="panel-copy">
-                    {formatSessionDate(selectedHistorySession.startedAt)}. {selectedHistorySession.status}. {selectedHistorySession.comparisonEligible ? 'Eligible for comparison.' : 'Not eligible for comparison.'}
-                  </p>
+                  <div className="history-detail-header">
+                    <button type="button" className="history-nav-button" onClick={() => navigateHistoryByOffset(-1)} aria-label="Show newer session">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="m14.5 6-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </button>
+                    <div className="history-detail-copy">
+                      <h3 className="history-detail-date">{formatSessionDate(selectedHistorySession.startedAt)}</h3>
+                      <p className="panel-copy">
+                        {selectedHistorySession.status}. {selectedHistorySession.comparisonEligible ? 'Eligible for comparison.' : 'Not eligible for comparison.'}
+                      </p>
+                    </div>
+                    <button type="button" className="history-nav-button" onClick={() => navigateHistoryByOffset(1)} aria-label="Show older session">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="m9.5 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </button>
+                  </div>
                   {selectedHistoryChart === null ? null : <>
                     <div className="hero-scrub-slot hero-scrub-slot--history" aria-live="polite">
                       {selectedHistoryScrubDetail !== null ? <div className="hero-scrub-card hero-scrub-card--history">
@@ -1655,16 +1695,29 @@ export function WorkoutScreen({
                       <p className="panel-copy">No earlier comparison-eligible session exists for this historical workout, so only the session trace is shown.</p>
                     ) : null}
                   </>}
-                  <div className="history-stats-grid">
+                  <div className="history-stats-table-shell">
                     {selectedHistoryStats.length === 0 ? (
                       <p className="panel-copy">Interval stats will appear here once a session completes with analyzed rounds.</p>
-                    ) : selectedHistoryStats.map((stat) => (
-                      <div key={stat.roundIndex} className="history-stat-card">
-                        <span>Round {stat.roundIndex + 1}</span>
-                        <strong>{formatDeltaValue(stat.deltaBpm)}</strong>
-                        <small>Peak {formatDeltaValue(stat.peakBpm)} / Trough {formatDeltaValue(stat.troughBpm)}</small>
-                      </div>
-                    ))}
+                    ) : <table className="history-stats-table">
+                      <thead>
+                        <tr>
+                          <th scope="col">Round</th>
+                          <th scope="col">Peak</th>
+                          <th scope="col">Trough</th>
+                          <th scope="col">Delta</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedHistoryStats.map((stat) => (
+                          <tr key={stat.roundIndex}>
+                            <td>{stat.roundIndex + 1}</td>
+                            <td>{formatDeltaValue(stat.peakBpm)}</td>
+                            <td>{formatDeltaValue(stat.troughBpm)}</td>
+                            <td>{formatDeltaValue(stat.deltaBpm)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>}
                   </div>
                 </>
               )}
@@ -1682,7 +1735,7 @@ export function WorkoutScreen({
                     className="history-item-select"
                     onClick={() => {
                       setSelectedHistorySessionId(session.id);
-                      setMobileHistoryMode(true);
+                      setMobileHistoryMode(isPortraitPhoneLayout());
                     }}
                   >
                     <span>{formatSessionDate(session.startedAt)}</span>
@@ -1702,31 +1755,33 @@ export function WorkoutScreen({
               ))}
             </div>
           </div>
-        </article>}
+        </article> : null}
       </section>
 
+      <input ref={importInputRef} type="file" accept="application/json" className="visually-hidden" onChange={(event) => void handleImportFileChange(event)} />
+
       <nav className="mobile-tab-bar" aria-label="Primary">
-        <button type="button" className="mobile-tab-bar__item mobile-tab-bar__item--active" aria-current="page">
+        <button type="button" className={'mobile-tab-bar__item' + (activeTab === 'home' ? ' mobile-tab-bar__item--active' : '')} aria-current={activeTab === 'home' ? 'page' : undefined} onClick={() => handleSelectPrimaryTab('home')}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
           <span>Home</span>
         </button>
-        <button type="button" className="mobile-tab-bar__item">
+        <button type="button" className={'mobile-tab-bar__item' + (activeTab === 'devices' ? ' mobile-tab-bar__item--active' : '')} aria-current={activeTab === 'devices' ? 'page' : undefined} onClick={() => handleSelectPrimaryTab('devices')}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M7 7.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Zm10 4a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z" fill="none" stroke="currentColor" stroke-width="1.8" />
             <path d="M9.5 10h5M9.5 14h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
           </svg>
           <span>Devices</span>
         </button>
-        <button type="button" className="mobile-tab-bar__item">
+        <button type="button" className={'mobile-tab-bar__item' + (activeTab === 'history' ? ' mobile-tab-bar__item--active' : '')} aria-current={activeTab === 'history' ? 'page' : undefined} onClick={() => handleSelectPrimaryTab('history')}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M7 5h10a2 2 0 0 1 2 2v10H5V7a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
             <path d="M9 3v4M15 3v4M8 11h8M8 15h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
           </svg>
-          <span>Data</span>
+          <span>History</span>
         </button>
-        <button type="button" className="mobile-tab-bar__item">
+        <button type="button" className={'mobile-tab-bar__item' + (activeTab === 'settings' ? ' mobile-tab-bar__item--active' : '')} aria-current={activeTab === 'settings' ? 'page' : undefined} onClick={() => handleSelectPrimaryTab('settings')}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" fill="none" stroke="currentColor" stroke-width="1.8" />
             <path d="m19 12 .9-1.6-1.7-2.9-1.8.3a6 6 0 0 0-1.4-.8L14.4 5h-4.8l-.6 2a6 6 0 0 0-1.4.8l-1.8-.3-.1.1L4.1 10.4 5 12l-.9 1.6 1.7 2.9 1.8-.3c.4.3.9.6 1.4.8l.6 2h4.8l.6-2c.5-.2 1-.5 1.4-.8l1.8.3 1.7-2.9z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" />

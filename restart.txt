@@ -38,3 +38,9 @@ Conclusion:
 Resume note for next chat:
 - Devcontainer privilege change has been verified successfully
 - If any remaining `apply_patch` failure shows up, investigate it as a separate issue rather than the original bubblewrap namespace error
+
+Current product backlog:
+- V2: OTA updates for web-layer changes in the Capacitor iPhone app
+- V2: Session notes / annotations
+- V2: Overall weighted recovery metric based on delta diffs
+- V2: Apple Watch integration
