@@ -228,6 +228,8 @@ export function WorkoutScreen({
   const [selectedHistoryPreviousStats, setSelectedHistoryPreviousStats] = useState<IntervalStatRecord[]>([]);
   const [demoFixture, setDemoFixture] = useState<DemoComparisonFixture | null>(null);
   const [activeTab, setActiveTab] = useState<PrimaryTab>('home');
+  const [devicesBpmPulseTick, setDevicesBpmPulseTick] = useState(0);
+  const [monitorBatteryPercent, setMonitorBatteryPercent] = useState<number | null>(null);
   const [scrubXPercent, setScrubXPercent] = useState<number | null>(null);
   const [historyScrubXPercent, setHistoryScrubXPercent] = useState<number | null>(null);
   const [startupCountdownSec, setStartupCountdownSec] = useState<number | null>(null);
@@ -266,11 +268,16 @@ export function WorkoutScreen({
           },
           onDisconnected: async () => {
             await controller.disconnectHeartRate(now());
+            setMonitorBatteryPercent(null);
             setControllerState(controller.getState());
           },
           onHeartRateSample: async (bpm) => {
             await controller.recordHeartRateSample(now(), bpm);
             setControllerState(controller.getState());
+            setDevicesBpmPulseTick((current) => current + 1);
+          },
+          onBatteryLevel: async (batteryPercent) => {
+            setMonitorBatteryPercent(batteryPercent);
           }
         };
         const deviceTestEnabled = typeof window !== 'undefined' && isDeviceTestEnabled(window.location.search);
@@ -985,8 +992,9 @@ export function WorkoutScreen({
     );
   const isScrubberEnabled = controllerState.controllerStatus !== 'running';
   const isPortraitPhone = isPortraitPhoneLayout();
+  const showDevicesTab = activeTab === 'devices' && isSessionActive === false && startupCountdownSec === null;
   const showHistoryTab = activeTab === 'history' && isSessionActive === false && startupCountdownSec === null;
-  const showSetupRuntimePanels = isSessionActive === false && startupCountdownSec === null && showHistoryTab === false;
+  const showSetupRuntimePanels = isSessionActive === false && startupCountdownSec === null && showHistoryTab === false && showDevicesTab === false;
   const selectedHistorySession = historySessions.find((session) => session.id === selectedHistorySessionId) ?? null;
   const selectedHistoryComparisonSession = getPreviousComparisonSessionForHistory(historySessions, selectedHistorySessionId);
   const showMobileHistoryMode = isPortraitPhone && (mobileHistoryMode || showHistoryTab) && isSessionActive === false && selectedHistorySession !== null;
@@ -1027,6 +1035,9 @@ export function WorkoutScreen({
   const liveTimeLabels = isPortraitPhone ? comparisonChart?.timeLabels.slice(1) ?? [] : comparisonChart?.timeLabels ?? [];
   const historyTimeLabels = isPortraitPhone ? selectedHistoryChart?.timeLabels.slice(1) ?? [] : selectedHistoryChart?.timeLabels ?? [];
   const hideSessionGraphLabels = HIDE_SESSION_GRAPH_LABELS;
+  const deviceTestMode = typeof window !== 'undefined' && isDeviceTestEnabled(window.location.search);
+  const displayedBatteryPercent = deviceTestMode ? 33 : monitorBatteryPercent;
+  const batteryFillPercent = displayedBatteryPercent === null ? 0 : Math.max(0, Math.min(100, displayedBatteryPercent));
 
   useEffect(() => {
     if (controllerState.controllerStatus === 'running') {
@@ -1076,6 +1087,12 @@ export function WorkoutScreen({
 
     previousPhaseTypeRef.current = controllerState.currentPhaseType;
   }, [controllerState.controllerStatus, controllerState.currentPhaseType, phaseRemainingSec]);
+
+  useEffect(() => {
+    if (activeTab === 'devices' && controllerState.hrConnectionStatus !== 'connected') {
+      setActiveTab('home');
+    }
+  }, [activeTab, controllerState.hrConnectionStatus]);
 
   if (bootstrapStatus === 'loading') {
     return (
@@ -1355,12 +1372,12 @@ export function WorkoutScreen({
     >
       <nav className="desktop-tab-strip" aria-label="Primary">
         <button type="button" className={'desktop-tab-strip__item' + (activeTab === 'home' ? ' desktop-tab-strip__item--active' : '')} aria-current={activeTab === 'home' ? 'page' : undefined} onClick={() => handleSelectPrimaryTab('home')}>Home</button>
-        <button type="button" className={'desktop-tab-strip__item' + (activeTab === 'devices' ? ' desktop-tab-strip__item--active' : '')} aria-current={activeTab === 'devices' ? 'page' : undefined} onClick={() => handleSelectPrimaryTab('devices')}>Devices</button>
+        <button type="button" className={'desktop-tab-strip__item' + (activeTab === 'devices' ? ' desktop-tab-strip__item--active' : '') + (controllerState.hrConnectionStatus !== 'connected' ? ' desktop-tab-strip__item--disabled' : '')} aria-current={activeTab === 'devices' ? 'page' : undefined} onClick={() => handleSelectPrimaryTab('devices')} disabled={controllerState.hrConnectionStatus !== 'connected'}>Devices</button>
         <button type="button" className={'desktop-tab-strip__item' + (activeTab === 'history' ? ' desktop-tab-strip__item--active' : '')} aria-current={activeTab === 'history' ? 'page' : undefined} onClick={() => handleSelectPrimaryTab('history')}>History</button>
         <button type="button" className={'desktop-tab-strip__item' + (activeTab === 'settings' ? ' desktop-tab-strip__item--active' : '')} aria-current={activeTab === 'settings' ? 'page' : undefined} onClick={() => handleSelectPrimaryTab('settings')}>Settings</button>
       </nav>
 
-      {showHistoryTab ? null : <section className={'hero-card hero-card--session ' + phaseClassName + (isSessionActive ? ' hero-card--running' : '')}>
+      {(showHistoryTab || showDevicesTab) ? null : <section className={'hero-card hero-card--session ' + phaseClassName + (isSessionActive ? ' hero-card--running' : '')}>
         <p className="eyebrow">{controllerState.connectedDeviceName ?? 'No HR monitor connected'}</p>
         {isSessionActive || startupCountdownSec !== null ? <h1 className="timer">{startupCountdownSec === null ? formatClock(phaseRemainingSec) : '00:0' + String(startupCountdownSec)}</h1> : null}
         <div className="hero-scrub-slot" aria-live="polite">
@@ -1394,6 +1411,43 @@ export function WorkoutScreen({
       </section>}
 
       <section className="status-grid">
+        {showDevicesTab ? <article className="panel panel-wide panel--devices">
+          <h2>Devices</h2>
+          <div className="devices-panel">
+            <div className="devices-summary">
+              <span className="devices-summary__eyebrow">Connected Monitor</span>
+              <strong>{controllerState.connectedDeviceName ?? 'Unknown Device'}</strong>
+            </div>
+            <div className="runtime-grid runtime-grid--wide">
+              <div className="devices-battery-card">
+                <span>Battery</span>
+                <strong className="devices-battery-readout">
+                  <svg className="devices-battery-icon" viewBox="0 0 28 18" aria-hidden="true">
+                    <rect x="1" y="3" width="22" height="12" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6" />
+                    <rect x="24.5" y="6.5" width="2.5" height="5" rx="1" fill="currentColor" />
+                    <rect className="devices-battery-icon__level" x="3.5" y="5.5" width={String(17 * (batteryFillPercent / 100))} height="7" rx="1.5" />
+                  </svg>
+                  <span>{displayedBatteryPercent === null ? '--' : String(displayedBatteryPercent) + '%'}</span>
+                </strong>
+              </div>
+              <div className="devices-bpm-card">
+                <span>Live BPM</span>
+                <strong className="devices-bpm-readout">
+                  <svg className={'devices-bpm-heart ' + (devicesBpmPulseTick % 2 === 0 ? 'devices-bpm-heart--pulse-a' : 'devices-bpm-heart--pulse-b')} viewBox="0 0 20 18" aria-hidden="true">
+                    <path d="M10 17c-.3 0-.6-.1-.8-.3C3.6 12.3.5 9.4.5 5.7.5 2.8 2.8.5 5.7.5c1.7 0 3.2.8 4.3 2.1C11 1.3 12.6.5 14.3.5 17.2.5 19.5 2.8 19.5 5.7c0 3.7-3.1 6.6-8.7 11-.2.2-.5.3-.8.3Z" fill="currentColor" />
+                  </svg>
+                  <span>{controllerState.currentBpm === null ? '--' : controllerState.currentBpm}</span>
+                </strong>
+              </div>
+            </div>
+            <div className="action-stack action-stack--inline devices-actions">
+              <button type="button" onClick={() => void handleReconnectMonitor()} disabled={isConnecting || isTransferringData}>Reconnect</button>
+              <button type="button" onClick={() => void handleConnectToggle()} disabled={isConnecting || isTransferringData}>{getConnectionActionLabel(controllerState, isConnecting)}</button>
+            </div>
+            {connectionMessage !== null ? <p className="panel-copy panel-copy--alert">{connectionMessage}</p> : null}
+          </div>
+        </article> : null}
+
         {showSetupRuntimePanels ? <>
           <article className="panel panel--setup">
             <h2>Setup</h2>
@@ -1493,7 +1547,7 @@ export function WorkoutScreen({
               Previous comparison source: {controllerState.previousComparisonSessionId ?? 'none yet'}
             </p>
           </article>
-        </> : showHistoryTab ? null : <article className="panel panel-wide panel--session-controls">
+        </> : (showHistoryTab || showDevicesTab) ? null : <article className="panel panel-wide panel--session-controls">
           <div className="session-controls-head">
             <div className="session-runtime-pill">
               <span>Status</span>
@@ -1515,7 +1569,7 @@ export function WorkoutScreen({
           </div>
         </article>}
 
-        {showHistoryTab ? null : <article className="panel panel-wide panel--comparison">
+        {(showHistoryTab || showDevicesTab) ? null : <article className="panel panel-wide panel--comparison">
           <h2>Live Comparison</h2>
           {comparisonChart === null ? (
             <p className="panel-copy">Start a session to build live round deltas.</p>
@@ -1767,7 +1821,7 @@ export function WorkoutScreen({
           </svg>
           <span>Home</span>
         </button>
-        <button type="button" className={'mobile-tab-bar__item' + (activeTab === 'devices' ? ' mobile-tab-bar__item--active' : '')} aria-current={activeTab === 'devices' ? 'page' : undefined} onClick={() => handleSelectPrimaryTab('devices')}>
+        <button type="button" className={'mobile-tab-bar__item' + (activeTab === 'devices' ? ' mobile-tab-bar__item--active' : '') + (controllerState.hrConnectionStatus !== 'connected' ? ' mobile-tab-bar__item--disabled' : '')} aria-current={activeTab === 'devices' ? 'page' : undefined} onClick={() => handleSelectPrimaryTab('devices')} disabled={controllerState.hrConnectionStatus !== 'connected'}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M7 7.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Zm10 4a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z" fill="none" stroke="currentColor" stroke-width="1.8" />
             <path d="M9.5 10h5M9.5 14h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
@@ -1841,7 +1895,7 @@ function getConnectionActionLabel(state: WorkoutSessionControllerState, isConnec
   }
 
   if (state.hrConnectionStatus === 'connected') {
-    return 'Disconnect Monitor';
+    return 'Disconnect';
   }
 
   return state.isCompromised ? 'Reconnect Monitor' : 'Connect Heart-Rate Monitor';

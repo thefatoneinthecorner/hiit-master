@@ -2,11 +2,16 @@ import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor
 
 export const HEART_RATE_SERVICE_UUID = 'heart_rate';
 export const HEART_RATE_MEASUREMENT_UUID = 'heart_rate_measurement';
+export const BATTERY_SERVICE_UUID = 'battery_service';
+export const BATTERY_LEVEL_UUID = 'battery_level';
 export const NATIVE_HEART_RATE_SERVICE_UUID = '0000180d-0000-1000-8000-00805f9b34fb';
 export const NATIVE_HEART_RATE_MEASUREMENT_UUID = '00002a37-0000-1000-8000-00805f9b34fb';
+export const NATIVE_BATTERY_SERVICE_UUID = '0000180f-0000-1000-8000-00805f9b34fb';
+export const NATIVE_BATTERY_LEVEL_UUID = '00002a19-0000-1000-8000-00805f9b34fb';
 
 interface BluetoothRequestDeviceOptions {
   filters: Array<{ services: string[] }>;
+  optionalServices?: string[];
 }
 
 interface BluetoothLikeNavigator extends Navigator {
@@ -38,12 +43,14 @@ interface BluetoothMeasurementEventTarget extends EventTarget {
 interface BluetoothLikeCharacteristic extends EventTarget {
   startNotifications: () => Promise<void>;
   stopNotifications: () => Promise<void>;
+  readValue: () => Promise<DataView>;
 }
 
 export interface HeartRateMonitorCallbacks {
   onConnected: (deviceName: string) => void;
   onDisconnected: () => void | Promise<void>;
   onHeartRateSample: (bpm: number) => void | Promise<void>;
+  onBatteryLevel: (batteryPercent: number | null) => void | Promise<void>;
 }
 
 export interface HeartRateMonitor {
@@ -77,6 +84,11 @@ interface NativeBluetoothLePlugin {
     service: string;
     characteristic: string;
   }) => Promise<void>;
+  read: (options: {
+    deviceId: string;
+    service: string;
+    characteristic: string;
+  }) => Promise<{ value?: string }>;
   addListener: (
     eventName: string,
     listenerFunc: (event: { value?: string }) => void
@@ -88,6 +100,14 @@ export function parseHeartRateMeasurement(value: DataView): number {
   const isUint16 = (flags & 0x01) === 0x01;
 
   return isUint16 ? value.getUint16(1, true) : value.getUint8(1);
+}
+
+function parseBatteryLevel(value: DataView): number | null {
+  if (value.byteLength === 0) {
+    return null;
+  }
+
+  return value.getUint8(0);
 }
 
 export function shouldUseNativeHeartRateMonitor(
@@ -137,7 +157,8 @@ export function createWebBluetoothHeartRateMonitor(callbacks: HeartRateMonitorCa
       device?.removeEventListener('gattserverdisconnected', handleGattServerDisconnected);
 
       device = await bluetoothNavigator.bluetooth.requestDevice({
-        filters: [{ services: [HEART_RATE_SERVICE_UUID] }]
+        filters: [{ services: [HEART_RATE_SERVICE_UUID] }],
+        optionalServices: [BATTERY_SERVICE_UUID]
       });
 
       device.addEventListener('gattserverdisconnected', handleGattServerDisconnected);
@@ -151,6 +172,13 @@ export function createWebBluetoothHeartRateMonitor(callbacks: HeartRateMonitorCa
       characteristic = await service.getCharacteristic(HEART_RATE_MEASUREMENT_UUID);
       characteristic.addEventListener('characteristicvaluechanged', handleCharacteristicValueChanged);
       await characteristic.startNotifications();
+      try {
+        const batteryService = await server.getPrimaryService(BATTERY_SERVICE_UUID);
+        const batteryCharacteristic = await batteryService.getCharacteristic(BATTERY_LEVEL_UUID);
+        await callbacks.onBatteryLevel(parseBatteryLevel(await batteryCharacteristic.readValue()));
+      } catch {
+        await callbacks.onBatteryLevel(null);
+      }
       callbacks.onConnected(device.name ?? 'Heart-rate monitor');
     },
 
@@ -169,6 +197,7 @@ export function createWebBluetoothHeartRateMonitor(callbacks: HeartRateMonitorCa
       }
 
       device = null;
+      await callbacks.onBatteryLevel(null);
       await callbacks.onDisconnected();
     },
 
@@ -283,6 +312,20 @@ export function createNativeBleHeartRateMonitor(callbacks: HeartRateMonitorCallb
           characteristic: NATIVE_HEART_RATE_MEASUREMENT_UUID
         });
         notificationsStarted = true;
+        try {
+          const batteryResult = await nativeBluetoothLe.read({
+            deviceId: device.deviceId,
+            service: NATIVE_BATTERY_SERVICE_UUID,
+            characteristic: NATIVE_BATTERY_LEVEL_UUID
+          });
+          if (batteryResult.value === undefined) {
+            await callbacks.onBatteryLevel(null);
+          } else {
+            await callbacks.onBatteryLevel(parseBatteryLevel(hexStringToDataView(batteryResult.value)));
+          }
+        } catch {
+          await callbacks.onBatteryLevel(null);
+        }
       } catch (error) {
         isDisconnecting = true;
         try {
@@ -324,6 +367,7 @@ export function createNativeBleHeartRateMonitor(callbacks: HeartRateMonitorCallb
         isDisconnecting = false;
       }
 
+      await callbacks.onBatteryLevel(null);
       await callbacks.onDisconnected();
     },
 

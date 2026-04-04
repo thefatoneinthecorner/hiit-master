@@ -79,6 +79,10 @@ button:disabled {
   color: var(--text);
 }
 
+.desktop-tab-strip__item--disabled {
+  opacity: 0.4;
+}
+
 .hero-card,
 .panel {
   border: 1px solid var(--line);
@@ -638,6 +642,143 @@ button:disabled {
   height: 22px;
 }
 
+.devices-panel {
+  display: grid;
+  gap: 16px;
+  height: 100%;
+  grid-template-rows: auto auto 1fr auto auto;
+}
+
+.panel--devices {
+  min-height: calc(100vh - 220px - env(safe-area-inset-bottom, 0px));
+}
+
+.devices-summary {
+  display: grid;
+  gap: 6px;
+}
+
+.devices-summary__eyebrow {
+  color: var(--compare);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.72rem;
+}
+
+.devices-summary strong {
+  font-size: clamp(1.25rem, 3vw, 1.8rem);
+}
+
+.devices-battery-readout {
+  display: inline-flex;
+  align-items: center;
+  gap: 24px;
+  line-height: 1;
+}
+
+.devices-battery-readout span {
+  display: block;
+  margin-bottom: 0;
+  line-height: 1;
+  font-size: 1.5em;
+}
+
+.devices-battery-icon {
+  width: 33px;
+  height: 33px;
+  color: #74859a;
+  flex: 0 0 auto;
+  transform: rotate(-90deg);
+  transform-origin: center;
+}
+
+.devices-battery-icon__level {
+  fill: #67c487;
+}
+
+.devices-actions {
+  justify-content: stretch;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-self: end;
+}
+
+.devices-bpm-card {
+  border: 1px solid rgba(255, 248, 222, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 248, 222, 0.03);
+}
+
+.devices-bpm-readout {
+  display: inline-flex;
+  align-items: center;
+  gap: 24px;
+  line-height: 1;
+}
+
+.devices-bpm-readout span {
+  display: block;
+  margin-bottom: 0;
+  line-height: 1;
+  font-size: 1.5em;
+}
+
+.devices-bpm-heart {
+  width: 33px;
+  height: 33px;
+  color: #74859a;
+  flex: 0 0 auto;
+  align-self: center;
+  transform-origin: center;
+}
+
+.devices-bpm-heart--pulse-a,
+.devices-bpm-heart--pulse-b {
+  animation-duration: 540ms;
+  animation-timing-function: ease-out;
+  animation-fill-mode: none;
+}
+
+.devices-bpm-heart--pulse-a {
+  animation-name: devices-bpm-heart-pulse-a;
+}
+
+.devices-bpm-heart--pulse-b {
+  animation-name: devices-bpm-heart-pulse-b;
+}
+
+@keyframes devices-bpm-heart-pulse-a {
+  0% {
+    color: #d14b3d;
+    transform: scale(1.18);
+  }
+
+  55% {
+    color: #b45d53;
+    transform: scale(1);
+  }
+
+  100% {
+    color: #74859a;
+    transform: scale(1);
+  }
+}
+
+@keyframes devices-bpm-heart-pulse-b {
+  0% {
+    color: #d14b3d;
+    transform: scale(1.18);
+  }
+
+  55% {
+    color: #b45d53;
+    transform: scale(1);
+  }
+
+  100% {
+    color: #74859a;
+    transform: scale(1);
+  }
+}
+
 .history-mobile-actions {
   display: none;
   gap: 8px;
@@ -742,6 +883,10 @@ button:disabled {
 
   .comparison-strip-bar {
     width: 8px;
+  }
+
+  .devices-actions.action-stack--inline {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1337,6 +1482,10 @@ button:disabled {
 .mobile-tab-bar__item--active {
   background: rgba(120, 184, 255, 0.14);
   color: var(--text);
+}
+
+.mobile-tab-bar__item--disabled {
+  opacity: 0.35;
 }
 
 @media (max-width: 600px) and (orientation: portrait) {
