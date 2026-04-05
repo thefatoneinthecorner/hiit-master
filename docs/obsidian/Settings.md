@@ -1,11 +1,8 @@
 # Settings
 
-![[Pasted image 20260404170526.png|300]]
+![[Pasted image 20260405154259.png|300]]
 
-![[Pasted image 20260404170549.png|300]]
-
-![[Pasted image 20260404170629.png|300]]
-
+![[Pasted image 20260405154333.png|300]]
 
 ## Purpose
 

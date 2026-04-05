@@ -1,15 +1,12 @@
 # History
-![[Pasted image 20260404170322.png|300]]
 
-The History page allows the training history and profile definitions to be loaded/exported from the app. The "Newer"/"Older" buttons are equivalent to swiping across the page and traverse the history of sessions. The "Delete" button deletes the currently displayed historical session from the database.
+![[Pasted image 20260405153943.png|300]]
 
-Below the "history navigation buttons" the date and time for the session is displayed and below that the heart graph, which is similar to the live heart graph, except (i) the axes are labelled and (ii) it incorporates a "scrubber" that moves across the time axis and displays the exact time and heart rate as it laterally shifts.
+Below the date and time for the session is displayed and below that the heart graph, which is similar to the live heart graph, except (i) the axes are labelled and (ii) it incorporates a "scrubber" that moves across the time axis and displays the exact time and heart rate as it laterally shifts.
 
-![[Pasted image 20260404170422.png|300]]
+![[Pasted image 20260405154037.png|300]]
 
 The screenshot above shows the characteristic rising sawtooth of a typical HIIT training session. Below that the "recovery deltas" between the current session and the previous session (against the same profile) are displayed as a histogram plot (just as they are in the live session). When the scrubber is over one of the histogram bars, it will display the round number.
-
-![[Pasted image 20260404170443.png|300]]
 
 Finally, below the recovery deltas, a table of raw data is displayed, showing the raw stats for each round.
 

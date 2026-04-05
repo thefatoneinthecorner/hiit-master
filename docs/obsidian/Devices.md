@@ -1,6 +1,6 @@
 # Devices
 
-![[Pasted image 20260404163650.png|300]]
+![[Pasted image 20260405153842.png|300]]
 
 This page displays the name of the connected heart rate monitor ("Polar OH1 36F91927" in the above diagram), its battery status and a live BPM indicator which "pulses" on every data point detected and also changes to red and then fades to grey. The "Reconnect" button should connect to the last Bluetooth device if it has become disconnected and is available. The Disconnect button disconnects the heart rate monitor and terminates any current session.
 ## Purpose

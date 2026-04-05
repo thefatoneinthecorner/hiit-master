@@ -44,3 +44,5 @@
 - Device management should not clutter the main workout flow
 - Data/history behaviour should live away from the primary workout CTA
 - Session profiles are the source of truth for workout timing
+
+[[TBD]]

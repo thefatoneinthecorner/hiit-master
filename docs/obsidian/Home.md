@@ -1,14 +1,14 @@
 # Home
 
-![[Pasted image 20260404163907.png|300]]
+![[Pasted image 20260405153636.png|300]]
 
 The "Home" screen on startup. One CTA button, "Connect" (a heart rate monitor to the app).
 
-![[Pasted image 20260404164018.png|300]]
+![[Pasted image 20260405153722.png|300]]
 
 Once connected to a heart rate monitor, the screen shifts to the start screen show above (should include a live heart rate counter). On this screen the user can specify their "Work Duration" (*Not* "Workout Duration"), which should default to whatever they had selected in their previous session, or 20s for their very first use. This page should also display the name of the currently active profile.
 
-![[Pasted image 20260404164159.png|300]]
+![[Pasted image 20260405153756.png|300]]
 
 Once started, the display adjusts again to display the current phase timer at the top, the Round name (either Warmup, "Round N" or Cooldown - the text colour - and that of that of the Time Left - changes according to the phase, either Work or Rest. In Work phase the text is red). Two graphs are displayed (probably clearer on the History page) - the top one being the live heart rate (and generally looks like a rising sawtooth) and the smaller one below being the "recovery delta" diff with the previous session of the current profile.
 ## Purpose
