@@ -1,14 +1,14 @@
 # History
 
-![[Pasted image 20260405153943.png|300]]
+![[Pasted image 20260405192106.png|300]]
 
-Below the date and time for the session is displayed and below that the heart graph, which is similar to the live heart graph, except (i) the axes are labelled and (ii) it incorporates a "scrubber" that moves across the time axis and displays the exact time and heart rate as it laterally shifts.
+Below the date and time for the session (acting as its name or title), the session name used for the session is displayed. Below that the session's heart graph, which is similar to the live heart graph, except (i) the axes are labelled (not shown) and (ii) it incorporates a "scrubber" that moves across the time axis and displays the exact time and heart rate as it laterally shifts in a small table immediately below.
 
-![[Pasted image 20260405154037.png|300]]
+Below the scrubber table, a table of performance data for each round is displayed.  "recovery deltas" between the current session and the previous session (against the same profile) are displayed as a histogram plot (just as they are in the live session). When the scrubber is over one of the histogram bars, it will display the round number.
 
-The screenshot above shows the characteristic rising sawtooth of a typical HIIT training session. Below that the "recovery deltas" between the current session and the previous session (against the same profile) are displayed as a histogram plot (just as they are in the live session). When the scrubber is over one of the histogram bars, it will display the round number.
+Finally, below the recovery delta histograms, a table of raw data is displayed, showing the raw stats for each round.
 
-Finally, below the recovery deltas, a table of raw data is displayed, showing the raw stats for each round.
+Swiping left or right over this screen will move forwards and backwards through time.
 
 ## Purpose
 

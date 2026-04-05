@@ -9,7 +9,7 @@ This page displays the name of the connected heart rate monitor ("Polar OH1 36F9
 
 ## Availability
 
-Required behavior:
+Required behaviour:
 
 - The `Devices` tab is disabled unless a monitor is connected.
 
@@ -42,7 +42,7 @@ Design intent:
 ## Connection behavior
 
 - `Reconnect` performs a disconnect and a fresh connect flow
-- This may show the Bluetooth picker again
+- This may show the host OS Bluetooth picker again
 - `Disconnect` ends the current monitor connection
 
 ## Design intent
