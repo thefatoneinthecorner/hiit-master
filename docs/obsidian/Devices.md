@@ -11,7 +11,7 @@ This page displays the name of the connected heart rate monitor ("Polar OH1 36F9
 
 Required behaviour:
 
-- The `Devices` tab is disabled unless a monitor is connected.
+- The `Devices` tab is disabled unless a monitor is connected or a session has started.
 - The `Devices` page remains accessible during an active session.
 
 Design intent:
