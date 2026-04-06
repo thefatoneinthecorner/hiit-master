@@ -12,7 +12,7 @@
 - The app uses the `preact-iso` router.
 - On mobile there is a bottom action bar.
 - On desktop there is a nav bar in the header.
-- `Devices` is disabled unless a heart-rate monitor is connected.
+- `Devices` is accessible when a heart-rate monitor is connected, or while a session is active.
 - `History` and `Settings` are only accessible when no session is active and no startup countdown is running.
 - `Devices` remains accessible during an active session so the user can disconnect or reconnect the monitor.
 - During startup countdown, `History`, `Devices`, and `Settings` are inaccessible.

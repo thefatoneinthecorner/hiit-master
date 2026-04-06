@@ -4,9 +4,9 @@
 
 The "Home" screen on startup. One CTA button, "Connect" (a heart rate monitor to the app).
 
-![[Pasted image 20260405172335.png|300]]
+![[Pasted image 20260406092647.png|300]]
 
-Once connected to a heart rate monitor, the screen shifts to the start screen shown above. The main CTA enables the athlete to start their session. Below the CTA a live heart rate readout confirms that the heart rate monitor is indeed connected. The user can update their "Work Duration", which should default to whatever they selected in their most recent previous session on the same selected profile, or `20s` if no earlier session exists for that profile. This property controls how hard the user will have to work in order to complete the session. The page also displays the name of the currently selected profile, which specifies the rest periods between work periods.
+Once connected to a heart rate monitor, the screen shifts to the start screen shown above. The main CTA enables the athlete to start their session. Below the CTA a live heart rate readout confirms that the heart rate monitor is indeed connected. The user can update their `Actual Work Duration`, which should default to whatever they selected in their most recent previous session on the same selected profile, or `20s` if no earlier session exists for that profile. This property controls how hard the user will have to work in order to complete the session. The page also displays the name of the currently selected profile, which specifies the rest periods between work periods.
 
 ![[Pasted image 20260405153756.png|300]]
 
@@ -34,7 +34,7 @@ Required behavior:
 Required behavior:
 
 - Shows a single primary `Connect` CTA with a heart icon.
-- Hides timer, BPM, round, and total-left readouts.
+- Hides timer, BPM, round, and remaining readouts.
 - Keeps the screen visually sparse and vertically centered on mobile.
 
 Design intent:
@@ -61,7 +61,7 @@ Design intent:
 Required behavior:
 
 - The app switches into the session view before the `3-2-1-0` beeps complete.
-- Graphs, `Round`, and `Total Left` are visible during countdown.
+- Graphs, `Round`, and `Remaining` are visible during countdown.
 - Countdown styling uses the green/rest visual treatment.
 
 Design intent:
@@ -72,7 +72,7 @@ Design intent:
 
 Required behavior:
 
-- Shows timer, BPM, `Round`, `Total Left`, progress, and live comparison graphs.
+- Shows timer, BPM, `Round`, `Remaining`, progress, and live comparison graphs.
 - Session graphs display gridlines at configurable intervals, but are unlabelled by default.
 - The main graph displays heart rate against time.
 - The main graph’s default vertical scale is initialized from the selected profile’s `nominalPeakHeartrate`.

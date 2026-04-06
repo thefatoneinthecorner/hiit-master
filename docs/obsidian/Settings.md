@@ -1,12 +1,12 @@
 # Settings
 
-![[Pasted image 20260405201043.png|300]]
+![[Pasted image 20260406092948.png|300]]
 
 The Settings page allows the IndexedDB database to be saved to an external file and imported from an external file. It also maintains the session profiles, which are mainly definitions of the recovery periods for each round. The app ships with a single starter profile named `My Profile`. There will always be at least one profile on the phone, and the app will not allow the last remaining profile to be deleted. One profile is always marked as the `Selected Profile`. This is the profile that will be used for the next training session.
 
 ![[Pasted image 20260405195611.png|300]]
 
-The image above shows the profile editor. Each profile has a name which the user can change, but it must always be unique. Profiles also have free-form arbitrary notes. Each profile has its own Nominal Work Period, typically 30 seconds. When the athlete uses the profile for training, successive rest periods will be taken from the "Recovery Periods" table, but the work period will always be the same and derived from the Nominal Work Period. Furthermore each profile has its own nominal peak heartrate which merely sets the initial vertical scale on the training session heart graph. Inside the table of recovery periods an individual period can be tapped, in which case a control panel will slide out allowing the period to be adjusted, removed, or cloned.
+The image above shows the profile editor. Each profile has a name which the user can change, but it must always be unique. Profiles also have free-form arbitrary notes. Each profile has its own Nominal Work Period, typically 30 seconds. When the athlete uses the profile for training, successive rest periods will be taken from the "Recovery Periods" table, and the total round durations will remain fixed between sessions even if the athlete reduces the `Actual Work Duration` for a particular session. Furthermore each profile has its own nominal peak heartrate which merely sets the initial vertical scale on the training session heart graph. Inside the table of recovery periods an individual period can be tapped, in which case a control panel will slide out allowing the period to be adjusted, removed, or cloned.
 ## Purpose
 
 `Settings` is the session-profile management screen.
@@ -18,8 +18,8 @@ This is not a general preferences page yet. It is primarily where backup/restore
 - Import backup data, including profile definitions
 - Export backup data, including profile definitions
 - Browse available session profiles
-- Select the selected profile for the next session
-- Edit a selected profile
+- Select a profile for the next session
+- Edit a profile
 - Delete a profile subject to profile rules
 
 ## Session profiles
@@ -67,7 +67,7 @@ Each profile contains:
 
 ### Timing
 
-- `Work Duration` stepper
+- `Actual Work Duration` stepper
 
 ### Recovery
 

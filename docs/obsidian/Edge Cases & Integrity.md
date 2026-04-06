@@ -65,7 +65,7 @@ Required behavior:
   - interval stats
   - heart-rate samples
   - profile definitions
-  - active profile selection
+  - selected profile selection
 
 ## Device-test mode
 

@@ -8,7 +8,7 @@ The goal is not to document every implementation detail. The goal is to capture 
 
 "HIIT Master" is a mobile app that combines and extends the functionality of the popular App Store "Seconds Pro" exercise timer and "Heart Graph" Bluetooth heart rate graphing apps, specifically for HIIT athletes. This combination of apps enables the easy analysis of heart rate data to extract peak and trough heart rates for each HIIT round. In turn, this enables comparison of recovery rates between corresponding intervals in previous sessions. Generally, if the recovery is "deeper" then the athlete can be assumed to be getting fitter.
 
-In order to make comparison between sessions more comparable, the HIIT timer - although configurable - encourages a fixed HIIT session comprised of fixed "nominal" work periods (typically, and by default, 30 seconds) in-dispersed with variable, shortening recovery periods. BUT at the start of each session the athlete can adjust the nominal work period - but any adjustment is "zeroed out" by extending the recovery periods such that each round duration is preserved.
+In order to make comparison between sessions more comparable, the HIIT timer - although configurable - encourages a fixed HIIT session comprised of fixed "nominal" work periods (typically, and by default, 30 seconds) in-dispersed with variable, shortening recovery periods. BUT at the start of each session the athlete can adjust the `Actual Work Duration` - and any adjustment is "zeroed out" by extending the recovery periods such that each round duration is preserved.
 
 As well as a Heart Graph, the application displays a discrete "histogram" style plot of the recovery deltas so that the athlete can tell at a glance, and whilst in session, how they are performing relative to their previous session.
 
@@ -48,4 +48,3 @@ Conventions:
 - `Design intent` means this explains why the behavior exists.
 - `Implementation note` means this is guidance for the rebuild, not a user-facing requirement.
 - `Open issue` means the design is incomplete or intentionally unresolved.
-

@@ -1,6 +1,5 @@
 # History
-
-![[Pasted image 20260405192106.png|300]]
+![[Pasted image 20260406093355.png|300]]
 
 Below the date and time for the session (acting as its name or title), the profile name used for the session is displayed. Below that the session's heart graph, which is similar to the live heart graph, except (i) the axes are labelled (not shown) and (ii) it incorporates a "scrubber" that moves across the time axis and displays the exact time and heart rate as it laterally shifts in a small table immediately below.
 
@@ -35,6 +34,11 @@ Required table columns:
 - `Peak`
 - `Trough`
 - `Delta`
+- `Delta Diff`
+
+`Delta` is the recovery for a round, defined as `Peak - Trough`.
+
+`Delta Diff` is the difference between this session’s `Delta` for a given round and the `Delta` for the same round in the most recent eligible previous session recorded against the same profile.
 
 ## Navigation behaviour
 
