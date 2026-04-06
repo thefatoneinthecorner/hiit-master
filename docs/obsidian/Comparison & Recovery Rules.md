@@ -31,13 +31,28 @@ Required behavior:
 Required behavior:
 
 - For each round, compute:
-  - `Peak`: highest heart rate in the work interval
+  - `Peak`: highest heart rate recorded during that round
   - `Trough`: lowest heart rate in the recovery window used for that round
   - `Delta`: `Peak - Trough`
 - Live comparison uses:
   - `Current Delta`
   - `Previous Delta`
   - `Diff Delta = Current Delta - Previous Delta`
+
+## Standard round derivation
+
+Required behavior:
+
+- For every non-final round:
+  - `Peak` is the highest heart rate recorded during that round
+  - `Trough` is the lowest heart rate recorded from the start of that round's recovery phase through the start of the following round's work phase
+- The standard recovery analysis window therefore extends beyond the nominal recovery phase and into the next work phase.
+- This allows the trough to be captured even when the athlete's heart rate continues falling slightly after the next work phase begins.
+
+Design intent:
+
+- The app should derive recovery from the athlete's true post-effort minimum, not from an artificially truncated rest-only window.
+- Round-to-round comparison should remain stable even when the minimum is reached just after the nominal recovery boundary.
 
 ## Final-round recovery calculation
 
