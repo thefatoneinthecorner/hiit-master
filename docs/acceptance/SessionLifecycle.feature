@@ -5,6 +5,11 @@ Feature: Session lifecycle and integrity
     When the initial screen is shown
     Then the app should be in the disconnected setup state
 
+  Scenario: Startup countdown is not yet an active session
+    Given the user has pressed Start
+    And the startup countdown is running
+    Then the session should not yet be considered active
+
   Scenario: Selected profile defines nominal workout structure
     Given a profile is marked as the Selected Profile
     When the user prepares a new session
@@ -33,6 +38,7 @@ Feature: Session lifecycle and integrity
     Given a workout session is paused
     When the user resumes the session
     Then the session should continue from the same point
+    And the session should have remained active while paused
 
   Scenario: Completed session remains inspectable
     Given a workout session has completed
@@ -46,6 +52,14 @@ Feature: Session lifecycle and integrity
     Given a session is in progress
     When the user ends the session early
     Then the session should be stored as ended early
+    And it should not be comparison-eligible
+
+  Scenario: Disconnecting during an active session ends it early and compromises it
+    Given a session is active
+    And a heart-rate monitor is connected
+    When the monitor is disconnected from the Devices screen
+    Then the session should end early
+    And the session should become compromised
     And it should not be comparison-eligible
 
   Scenario: Connection loss compromises a session

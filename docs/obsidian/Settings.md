@@ -67,7 +67,7 @@ Each profile contains:
 
 ### Timing
 
-- `Actual Work Duration` stepper
+- Home-screen `Actual Work Duration` stepper for the next session
 
 ### Recovery
 

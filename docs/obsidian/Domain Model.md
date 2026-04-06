@@ -50,7 +50,7 @@ Required behavior:
 - the nominal profile work duration is typically `30s`
 - the Home screen `Actual Work Duration` defaults to:
   - the most recent session’s chosen work duration for the same selected profile
-  - otherwise `20s` if no earlier session exists for that profile
+  - otherwise two thirds of the selected profile's nominal work duration if no earlier session exists for that profile
 
 ## Historical linkage
 

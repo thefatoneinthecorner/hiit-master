@@ -16,6 +16,8 @@
 - `History` and `Settings` are only accessible when no session is active and no startup countdown is running.
 - `Devices` remains accessible during an active session so the user can disconnect or reconnect the monitor.
 - During startup countdown, `History`, `Devices`, and `Settings` are inaccessible.
+- A session is not considered active until the startup countdown has completed.
+- A paused session is still considered active.
 
 ## Screen purposes
 

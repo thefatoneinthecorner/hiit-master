@@ -23,6 +23,7 @@ Required behavior:
 - The user connects a heart-rate monitor before starting a session.
 - The selected profile defines the nominal workout structure.
 - The user may adjust work duration for the next session without mutating the profile.
+- The startup countdown is not yet an active session.
 
 ## Startup countdown
 
@@ -36,6 +37,7 @@ Required behavior:
   - total remaining time
   - session graphs
 - Countdown should use the green/rest treatment rather than the red/work treatment.
+- The session only becomes active after the startup countdown completes.
 
 ## Running
 
@@ -54,6 +56,7 @@ Required behavior:
 
 - The user can pause and resume.
 - Paused state should preserve session progress and comparison context.
+- A paused session is still considered active.
 - While paused, the user may switch to [[Devices]], disconnect the current monitor, connect a different monitor, return to [[Home]], and resume the session.
 
 ## Completed
@@ -71,6 +74,7 @@ Required behavior:
 
 - Ending early stores the session as ended early.
 - Ended-early sessions are not comparison-eligible.
+- Disconnecting the monitor during an active session is one way a session can end early.
 
 ## Compromised
 

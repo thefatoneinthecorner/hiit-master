@@ -13,6 +13,8 @@ Required behaviour:
 
 - The `Devices` tab is disabled unless a monitor is connected or a session has started.
 - The `Devices` page remains accessible during an active session.
+- The startup countdown does not count as an active session.
+- A paused session still counts as an active session.
 
 Design intent:
 
@@ -45,8 +47,9 @@ Design intent:
 
 - `Reconnect` performs a disconnect and a fresh connect flow
 - This may show the host OS Bluetooth picker again
+- `Reconnect` leaves an active session active
 - `Disconnect` ends the current monitor connection
-- If a session is active when disconnect occurs, that session becomes compromised
+- If a session is active when disconnect occurs, the session ends early and becomes compromised
 
 ## Mid-session device switching
 
@@ -56,8 +59,7 @@ Required behavior:
 - Intended workflow:
   - pause the active session
   - switch to `Devices`
-  - disconnect the current monitor
-  - connect/reconnect a different monitor
+  - reconnect to a different monitor
   - return to `Home`
   - resume the session
 

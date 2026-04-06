@@ -17,6 +17,16 @@ Feature: Devices screen and monitor management
     When the tab bar is displayed
     Then the Devices tab should be enabled
 
+  Scenario: Devices tab remains available while a session is paused
+    Given a workout session is paused
+    When the tab bar is displayed
+    Then the Devices tab should be enabled
+
+  Scenario: Devices tab is unavailable during startup countdown
+    Given the startup countdown is running
+    When the tab bar is displayed
+    Then the Devices tab should be disabled
+
   Scenario: Devices screen shows current device status
     Given a heart-rate monitor named "Polar OH1 36F91927" is connected
     And the battery level is available as 80 percent
@@ -40,11 +50,19 @@ Feature: Devices screen and monitor management
     And the app should start a fresh connection flow
     And the host OS Bluetooth picker may be shown
 
+  Scenario: Reconnect preserves an active paused session
+    Given a workout session is paused
+    And a heart-rate monitor is connected
+    When the user taps "Reconnect" on the Devices screen
+    Then the session should remain active
+    And the session should remain resumable
+
   Scenario: Disconnect compromises an active session
     Given a workout session is active
     And a heart-rate monitor is connected
     When the user taps "Disconnect" on the Devices screen
     Then the monitor connection should end
+    And the session should end early
     And the session should be marked as compromised
 
   Scenario: Athlete can switch devices mid-session
@@ -55,4 +73,3 @@ Feature: Devices screen and monitor management
     And the user connects a different heart-rate monitor
     And the user returns to Home
     Then the session should still be resumable
-

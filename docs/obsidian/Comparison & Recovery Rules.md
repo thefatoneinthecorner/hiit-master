@@ -30,49 +30,36 @@ Required behavior:
 
 Required behavior:
 
+- A `Round` is defined as a work phase followed by its recovery phase.
 - For each round, compute:
   - `Peak`: highest heart rate recorded during that round
-  - `Trough`: lowest heart rate in the recovery window used for that round
+  - `Trough`: lowest heart rate recorded in that round's "recovery window" (see below)
   - `Delta`: `Peak - Trough`
 - Live comparison uses:
   - `Current Delta`
   - `Previous Delta`
   - `Diff Delta = Current Delta - Previous Delta`
 
-## Standard round derivation
+## Recovery window derivation
 
 Required behavior:
 
 - For every non-final round:
-  - `Peak` is the highest heart rate recorded during that round
-  - `Trough` is the lowest heart rate recorded from the start of that round's recovery phase through the start of the following round's work phase
-- The standard recovery analysis window therefore extends beyond the nominal recovery phase and into the next work phase.
-- This allows the trough to be captured even when the athlete's heart rate continues falling slightly after the next work phase begins.
+  - the recovery window starts at the start of that round's recovery phase
+  - the recovery window includes the following round's work phase
+  - `Trough` is the lowest heart rate recorded anywhere in that recovery window
+- For the final round:
+  - there is no following work phase, so a different recovery-window rule must be used
+  - first calculate the time gap between the last two known troughs
+  - this value is the `final inter-trough gap`
+  - the final recovery window starts at the end of the final work phase
+  - the final recovery window continues for `final inter-trough gap - nominal work duration`
+  - `Trough` is the lowest heart rate recorded anywhere in that final recovery window
 
 Design intent:
 
 - The app should derive recovery from the athlete's true post-effort minimum, not from an artificially truncated rest-only window.
 - Round-to-round comparison should remain stable even when the minimum is reached just after the nominal recovery boundary.
-
-## Final-round recovery calculation
-
-Required behavior:
-
-- The final round must still produce a recovery delta even though there is no following work interval.
-- The rebuild must include an explicit last-round recovery rule rather than assuming every round can look forward to the next work interval.
-
-Implementation note:
-
-- Earlier rounds can measure trough using a window that extends into the next work interval.
-- The final round cannot do that.
-- The current implementation estimates the final-round trough by:
-  - taking the trough timing offset from the previous round relative to the start of the following work interval
-  - projecting that offset onto the final cooldown region
-  - estimating BPM at that projected time from the live sample series
-
-Design intent:
-
-- The final round should remain analytically comparable instead of being dropped or treated inconsistently.
 
 ## Live reveal timing
 
