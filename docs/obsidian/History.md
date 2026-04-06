@@ -1,11 +1,13 @@
 # History
-![[Pasted image 20260406093355.png|300]]
+![[Pasted image 20260406105832.png|300]]
 
-Below the date and time for the session (acting as its name or title), the profile name used for the session is displayed. Below that the session's heart graph, which is similar to the live heart graph, except (i) the axes are labelled (not shown) and (ii) it incorporates a "scrubber" that moves across the time axis and displays the exact time and heart rate as it laterally shifts in a small table immediately below.
+Below the date and time for the session (acting as its name or title), the profile name used for the session is displayed. A trash icon next to the session title allows the user to delete that session. Below that the session's heart graph, which is similar to the live heart graph, except (i) the axes are labelled (not shown) and (ii) it incorporates a "scrubber" that moves across the time axis.
 
-Below the scrubber table, a table of performance data for each round is displayed.  "recovery deltas" between the current session and the previous session (against the same profile) are displayed as a histogram plot (just as they are in the live session). When the scrubber is over one of the histogram bars, it will display the round number.
+Immediately below the heart graph, the UI displays the current `Round`, `Time`, and `BPM` corresponding to the scrubber position.
 
-Finally, below the recovery delta histograms, a table of raw data is displayed, showing the raw stats for each round.
+Below that, "recovery deltas" between the current session and the previous session (against the same profile) are displayed as a histogram plot (just as they are in the live session). When the scrubber is over one of the histogram bars, it will display the round number.
+
+Finally, below the recovery delta histograms, a compact stats readout is displayed for the selected round, showing `Peak`, `Trough`, `Delta`, and `Delta Diff` (if available), followed by the raw table of round data.
 
 Swiping left or right over this screen will move forwards and backwards through time.
 
@@ -17,7 +19,7 @@ Swiping left or right over this screen will move forwards and backwards through 
 
 - Browse previous sessions
 - Navigate between sessions
-- Delete a session
+- Delete a session using the trash icon in the header
 
 ## Session presentation
 
@@ -26,7 +28,14 @@ Required behavior:
 - The session date is clearly visible in the detail view
 - The session name is derived from the session start date/time
 - The profile name associated with the session is shown
+- A trash icon in the header deletes the current session
 - Round data is shown as a compact table
+
+Required scrubber readout fields:
+
+- `Round`
+- `Time`
+- `BPM`
 
 Required table columns:
 
