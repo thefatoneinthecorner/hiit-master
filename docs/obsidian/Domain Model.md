@@ -44,7 +44,7 @@ Generated from the selected profile.
 Required behavior:
 
 - round count is variable and derived from the profile’s recovery list
-- users can adjust work duration at session start without mutating the profile
+- users can actual adjust work duration at session start without mutating the profile
 - any work-duration adjustment is compensated for in the recovery periods so that total round durations are preserved
 - warmup and cooldown are part of the workout plan
 - the nominal profile work duration is typically `30s`

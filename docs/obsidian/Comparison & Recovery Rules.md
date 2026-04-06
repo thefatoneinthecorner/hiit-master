@@ -65,14 +65,8 @@ Design intent:
 
 Required behavior:
 
-- A round’s comparison result must not always wait until the next work interval completes.
-- By default, a round becomes visible at the start of the next work interval.
-- It should become visible earlier during the preceding recovery period if the live heart-rate trace has already crossed the threshold where `Current Delta` is guaranteed to match or exceed the previous session’s delta for that round.
-
-Implementation note:
-
-- In the current logic, the early-reveal threshold is the first sample in the relevant recovery window where:
-  - `sample bpm <= peak bpm - previous delta`
+- By default, a round’s comparison result in the histogram display becomes visible (and fixed) at the end of the next work interval.
+- However, during the round's recovery period, if the live heart rate falls to a rate whereby the `Current Delta` matches or exceeds the previous session’s delta for that round, then it should be displayed immediately and live update until the end of the next work interval.
 
 Design intent:
 

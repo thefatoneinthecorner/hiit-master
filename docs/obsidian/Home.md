@@ -48,7 +48,7 @@ Required behavior:
 - Primary CTA changes to `Start` with a running icon.
 - Shows live BPM.
 - Shows the selected profile’s name.
-- Uses a fake iOS-style wheel for adjusting work duration relative to the profile's nominal work duration.
+- Uses a fake iOS-style wheel for adjusting actual work duration relative to the profile's nominal work duration.
 
 Design intent:
 

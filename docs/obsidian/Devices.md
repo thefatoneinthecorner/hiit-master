@@ -45,7 +45,7 @@ Design intent:
 
 ## Connection behavior
 
-- `Reconnect` performs a disconnect and a fresh connect flow
+- `Reconnect` performs a transient monitor disconnect and a fresh connect flow within the same session context
 - This may show the host OS Bluetooth picker again
 - `Reconnect` leaves an active session active
 - `Disconnect` ends the current monitor connection
