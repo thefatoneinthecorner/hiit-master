@@ -31,6 +31,7 @@ Start here:
 - [[Devices]]
 - [[History]]
 - [[Settings]]
+- [[Training Method]]
 - [[Domain Model]]
 - [[Tech Constraints]]
 - [[Comparison & Recovery Rules]]
@@ -47,5 +48,4 @@ Conventions:
 - `Design intent` means this explains why the behavior exists.
 - `Implementation note` means this is guidance for the rebuild, not a user-facing requirement.
 - `Open issue` means the design is incomplete or intentionally unresolved.
-
 

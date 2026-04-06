@@ -12,6 +12,17 @@
 - The session layout appears before the countdown beeps finish
 - Graphs and runtime indicators should already be visible during countdown
 
+## Mid-session device switching
+
+- A paused session may be resumed after switching to a different heart-rate device
+- Intended user flow:
+  - pause
+  - open [[Devices]]
+  - disconnect current device
+  - connect a different device
+  - return to [[Home]]
+  - resume
+
 ## History navigation
 
 - Mobile: swipe horizontally between sessions

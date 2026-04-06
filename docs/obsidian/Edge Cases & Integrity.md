@@ -48,15 +48,13 @@ Design intent:
 
 ## Profile mutability
 
-Open issue:
+Required behavior:
 
-- Editing a profile after sessions have already been recorded against it changes the historical meaning of those sessions.
-
-Likely options:
-
-- referenced profiles become read-only
-- only notes remain editable on referenced profiles
-- profile versioning is introduced and sessions persist the version used
+- Once any session references a profile, that profile’s timing values become immutable.
+- Referenced profiles may still have their `name` and `notes` edited.
+- If the athlete wants to change the timing values, they must either:
+  - clone the profile and edit the clone
+  - or delete the old sessions that reference the profile
 
 ## Data portability
 

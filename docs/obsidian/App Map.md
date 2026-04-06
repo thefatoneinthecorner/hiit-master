@@ -13,14 +13,15 @@
 - On mobile there is a bottom action bar.
 - On desktop there is a nav bar in the header.
 - `Devices` is disabled unless a heart-rate monitor is connected.
-- When a workout session is active, the app forces focus back to `Home`.
-- `History`, `Devices`, and `Settings` are only accessible when no session is active and no startup countdown is running.
+- `History` and `Settings` are only accessible when no session is active and no startup countdown is running.
+- `Devices` remains accessible during an active session so the user can disconnect or reconnect the monitor.
+- During startup countdown, `History`, `Devices`, and `Settings` are inaccessible.
 
 ## Screen purposes
 
 - [[Home]]: connection/start flow and live workout session
 - [[Devices]]: current monitor management and live device readouts
-- [[History]]: browse recorded sessions and import/export data
+- [[History]]: browse recorded sessions and inspect historical performance
 - [[Settings]]: session profile management
 
 ## Major app states
@@ -44,5 +45,3 @@
 - Device management should not clutter the main workout flow
 - Data/history behaviour should live away from the primary workout CTA
 - Session profiles are the source of truth for workout timing
-
-[[TBD]]

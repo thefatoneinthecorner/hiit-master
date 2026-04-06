@@ -21,7 +21,7 @@ Required behavior:
 
 - The app starts disconnected.
 - The user connects a heart-rate monitor before starting a session.
-- The active profile defines the nominal workout structure.
+- The selected profile defines the nominal workout structure.
 - The user may adjust work duration for the next session without mutating the profile.
 
 ## Startup countdown
@@ -54,6 +54,7 @@ Required behavior:
 
 - The user can pause and resume.
 - Paused state should preserve session progress and comparison context.
+- While paused, the user may switch to [[Devices]], disconnect the current monitor, connect a different monitor, return to [[Home]], and resume the session.
 
 ## Completed
 

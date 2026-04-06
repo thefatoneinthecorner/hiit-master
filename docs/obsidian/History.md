@@ -2,7 +2,7 @@
 
 ![[Pasted image 20260405192106.png|300]]
 
-Below the date and time for the session (acting as its name or title), the session name used for the session is displayed. Below that the session's heart graph, which is similar to the live heart graph, except (i) the axes are labelled (not shown) and (ii) it incorporates a "scrubber" that moves across the time axis and displays the exact time and heart rate as it laterally shifts in a small table immediately below.
+Below the date and time for the session (acting as its name or title), the profile name used for the session is displayed. Below that the session's heart graph, which is similar to the live heart graph, except (i) the axes are labelled (not shown) and (ii) it incorporates a "scrubber" that moves across the time axis and displays the exact time and heart rate as it laterally shifts in a small table immediately below.
 
 Below the scrubber table, a table of performance data for each round is displayed.  "recovery deltas" between the current session and the previous session (against the same profile) are displayed as a histogram plot (just as they are in the live session). When the scrubber is over one of the histogram bars, it will display the round number.
 
@@ -12,21 +12,20 @@ Swiping left or right over this screen will move forwards and backwards through 
 
 ## Purpose
 
-`History` combines data-management actions with browsing of previous workout sessions.
+`History` is the historical session browsing and inspection screen.
 
 ## Required capabilities
 
 - Browse previous sessions
 - Navigate between sessions
 - Delete a session
-- Import backup data (including profile definitions)
-- Export backup data (including profile definitions)
 
 ## Session presentation
 
 Required behavior:
 
 - The session date is clearly visible in the detail view
+- The session name is derived from the session start date/time
 - The profile name associated with the session is shown
 - Round data is shown as a compact table
 
@@ -47,15 +46,10 @@ Required table columns:
 
 - Use chevron buttons on either side of the history detail header
 
-## Import/export behavior
-
-- Import and export operate on the full data model, not just sessions
-- Profiles are included in backup import/export
-
 ## Design intent
 
-- `History` should be where all historical review and data portability lives
-- Import/export should not sit on the main workout screen
+- `History` should be where all historical review and deletion lives
+- Data portability should not clutter the session browsing flow
 
 ## Open issue
 
