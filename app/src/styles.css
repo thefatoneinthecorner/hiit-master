@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --app-canvas: 244 239 228;
+  --app-panel: 255 250 242;
+  --app-line: 183 169 146;
+  --app-ink: 34 30 24;
+  --app-muted: 109 99 85;
+  --app-accent: 39 84 72;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@layer base {
+  html {
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    background-color: rgb(var(--app-canvas));
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@layer utilities {
+  .bg-app-canvas {
+    background-color: rgb(var(--app-canvas));
+  }
+
+  .bg-app-panel {
+    background-color: rgb(var(--app-panel));
+  }
+
+  .border-app-line {
+    border-color: rgb(var(--app-line));
+  }
+
+  .text-app-ink {
+    color: rgb(var(--app-ink));
+  }
+
+  .text-app-muted {
+    color: rgb(var(--app-muted));
+  }
+
+  .text-app-accent {
+    color: rgb(var(--app-accent));
+  }
+
+  .border-app-accent {
+    border-color: rgb(var(--app-accent));
+  }
+
+  .bg-app-accent {
+    background-color: rgb(var(--app-accent));
+  }
+
+  .pt-safe-top {
+    padding-top: calc(1rem + var(--safe-top));
+  }
+
+  .pb-safe-bottom {
+    padding-bottom: calc(0.5rem + var(--safe-bottom));
+  }
+
+  .font-display {
+    font-family: "Avenir Next Condensed", "Avenir Next", "Segoe UI", sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+  }
+
+  .shadow-card {
+    box-shadow: 0 20px 60px rgb(110 95 73 / 0.08);
+  }
+}
