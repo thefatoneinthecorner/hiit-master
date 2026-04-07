@@ -1,0 +1,14 @@
+# Block all Git commands, including common subcommands and shell-wrapped forms.
+prefix_rule(
+    pattern = ["git"],
+    decision = "forbidden",
+    justification = "Git operations are disabled in this environment. Edit files directly instead.",
+    match = [
+        "git status",
+        "git diff",
+        "git add .",
+        "git commit -m test",
+        "git checkout -b feature/no-git",
+        "git push",
+    ],
+)

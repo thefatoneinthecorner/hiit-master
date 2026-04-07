@@ -264,17 +264,6 @@ Prioritized elements:
 4. compact heart graph
 5. compact status / controls
 
-Dense tables are not required in the phone layout.
-
-### Larger-screen debug layout
-
-Additional elements:
-
-- per-round table
-- raw/derived metric inspection
-- session metadata panel
-
-This should be responsive enhancement, not a separate product mode.
 
 ## View Model Strategy
 
@@ -346,22 +335,3 @@ The domain should output comparison values and status, not presentation primitiv
 - runtime HR disconnection should not terminate the timer
 - storage errors should fail loudly in development and visibly in UI where needed
 - export failures should not corrupt stored data
-
-## Initial Implementation Priorities
-
-1. domain workout schedule generator
-2. domain interval analysis
-3. session eligibility rules
-4. IndexedDB storage adapter
-5. app-level workout/session controller
-6. minimal Preact screens
-7. Bluetooth/audio/wakelock adapters
-8. export flows
-
-## Deferred Architectural Work
-
-- configurable workout templates
-- alternate baseline selection
-- cloud sync
-- health platform integrations
-- manual correction workflows
