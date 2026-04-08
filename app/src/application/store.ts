@@ -1,0 +1,749 @@
+import { batch, computed, signal } from '@preact/signals';
+import { Capacitor } from '@capacitor/core';
+import { analyzeSessionRounds, getScrubPointData } from '../domain/analysis/recovery';
+import { buildComparisonRounds, findPreviousComparableSession } from '../domain/comparison/comparison';
+import { createSessionName, createUniqueProfileName, getDefaultActualWorkDurationSec } from '../domain/shared/profile';
+import type {
+  ComparisonRound,
+  HeartRateSample,
+  RoundAnalysis,
+  SessionProfile,
+  SessionRecord,
+  SessionStatus,
+  WorkoutPhaseSegment
+} from '../domain/shared/types';
+import { deriveSessionIntegrity, filterPlausibleBpm, isCountdownActive, isSessionActive } from '../domain/session/lifecycle';
+import { createWorkoutPlan, getPhaseAtElapsedSec } from '../domain/workout/plan';
+import { playCountdownAudio, playPhaseTransitionAudio } from '../infrastructure/audio/countdownAudio';
+import { CapacitorHeartRateMonitor } from '../infrastructure/bluetooth/capacitorHeartRateMonitor';
+import { MockHeartRateMonitor } from '../infrastructure/bluetooth/mockHeartRateMonitor';
+import type { ConnectedMonitor, HeartRateMonitorAdapter } from '../infrastructure/bluetooth/types';
+import { WebBluetoothHeartRateMonitor } from '../infrastructure/bluetooth/webBluetoothHeartRateMonitor';
+import {
+  createExportPayload,
+  loadSnapshot,
+  parseImportPayload,
+  replaceSnapshot,
+  saveSnapshot,
+  type AppSnapshot
+} from '../infrastructure/storage/db';
+import { releaseWakeLock, requestWakeLock } from '../infrastructure/wakelock/wakelock';
+
+export interface SessionRuntime {
+  status: SessionStatus;
+  startedAt: string | null;
+  elapsedSec: number;
+  countdownRemainingSec: number;
+  isCompromised: boolean;
+  hrCoverageComplete: boolean;
+  samples: HeartRateSample[];
+  bpm: number | null;
+  bpmPulseAt: number;
+  scrubElapsedSec: number | null;
+  actualWorkDurationSec: number;
+}
+
+export interface ProfileDraft extends SessionProfile {
+  isDirty: boolean;
+}
+
+const deviceTestMode = new URLSearchParams(window.location.search).get('device-test') === '1';
+
+const runtime = signal<SessionRuntime>({
+  status: 'idle',
+  startedAt: null,
+  elapsedSec: 0,
+  countdownRemainingSec: 3,
+  isCompromised: false,
+  hrCoverageComplete: true,
+  samples: [],
+  bpm: null,
+  bpmPulseAt: 0,
+  scrubElapsedSec: null,
+  actualWorkDurationSec: 20
+});
+
+const profiles = signal<SessionProfile[]>([]);
+const sessions = signal<SessionRecord[]>([]);
+const selectedProfileId = signal<string>('');
+const historyIndex = signal(0);
+const initialized = signal(false);
+const activeRoute = signal('/');
+const draftProfileId = signal<string | null>(null);
+const profileDraft = signal<ProfileDraft | null>(null);
+const pendingProfileSwitchId = signal<string | null>(null);
+const pendingEditProfileId = signal<string | null>(null);
+const showUnsavedModal = signal(false);
+
+let tickTimerId: number | null = null;
+let lastPhaseCueKey: string | null = null;
+
+const monitor: HeartRateMonitorAdapter = deviceTestMode
+  ? new MockHeartRateMonitor(
+      () => getTargetBpm(),
+      true,
+      () => sessions.value.find((session) => session.samples.some((sample) => sample.bpm !== null))?.samples ?? []
+    )
+  : Capacitor.isNativePlatform()
+    ? new CapacitorHeartRateMonitor()
+    : new WebBluetoothHeartRateMonitor();
+let monitorInfo: ConnectedMonitor | null = null;
+
+function getTargetBpm(): number {
+  const currentRuntime = runtime.value;
+  if (currentRuntime.status === 'idle' || currentRuntime.status === 'ready' || currentRuntime.status === 'connecting_hr') {
+    return 58;
+  }
+
+  if (currentRuntime.status === 'countdown') {
+    return 70;
+  }
+
+  const phase = currentPhase.value;
+  if (!phase) {
+    return 90;
+  }
+
+  if (phase.kind === 'warmup') {
+    return 95;
+  }
+  if (phase.kind === 'work') {
+    return 160;
+  }
+  if (phase.kind === 'rest' || phase.kind === 'cooldown') {
+    return 120;
+  }
+  return 70;
+}
+
+monitor.onSample((incomingBpm) => {
+  const bpm = filterPlausibleBpm(incomingBpm);
+  if (bpm === null) {
+    return;
+  }
+
+  const currentRuntime = runtime.value;
+  const shouldPersist = currentRuntime.status === 'running' || currentRuntime.status === 'paused';
+  const elapsedSec = currentRuntime.status === 'completed' ? currentRuntime.elapsedSec : getLiveElapsedSec();
+
+  runtime.value = {
+    ...currentRuntime,
+    bpm,
+    bpmPulseAt: Date.now(),
+    samples: shouldPersist ? [...currentRuntime.samples, { elapsedSec, bpm }] : currentRuntime.samples
+  };
+});
+
+monitor.onDisconnect(() => {
+  monitorInfo = null;
+
+  if (isSessionActive(runtime.value.status)) {
+    void appStore.markConnectionLost();
+    return;
+  }
+
+  runtime.value = {
+    ...runtime.value,
+    status: 'idle',
+    bpm: null
+  };
+});
+
+function getLiveElapsedSec(): number {
+  return runtime.value.status === 'countdown' ? 0 : runtime.value.elapsedSec;
+}
+
+async function persistSnapshot(): Promise<void> {
+  if (!initialized.value) {
+    return;
+  }
+
+  await saveSnapshot({
+    profiles: profiles.value,
+    sessions: sessions.value,
+    settings: {
+      selectedProfileId: selectedProfileId.value
+    }
+  });
+}
+
+function getSelectedProfile(): SessionProfile {
+  return profiles.value.find((profile) => profile.id === selectedProfileId.value) ?? profiles.value[0]!;
+}
+
+const selectedProfile = computed(() => getSelectedProfile());
+const currentPlan = computed(() => createWorkoutPlan(selectedProfile.value, runtime.value.actualWorkDurationSec));
+const currentPhase = computed<WorkoutPhaseSegment | null>(() => {
+  const status = runtime.value.status;
+  if (status === 'idle' || status === 'connecting_hr' || status === 'ready') {
+    return null;
+  }
+  if (status === 'countdown') {
+    return {
+      key: 'countdown',
+      kind: 'countdown',
+      label: 'Warmup',
+      roundIndex: null,
+      startSec: 0,
+      endSec: 4,
+      durationSec: 4
+    };
+  }
+  return getPhaseAtElapsedSec(currentPlan.value, runtime.value.elapsedSec);
+});
+
+const previousComparisonSession = computed(() =>
+  findPreviousComparableSession(
+    {
+      startedAt: runtime.value.startedAt ?? new Date().toISOString(),
+      profileId: selectedProfile.value.id
+    },
+    sessions.value
+  )
+);
+
+const currentAnalysis = computed<RoundAnalysis[]>(() => analyzeSessionRounds(currentPlan.value, runtime.value.samples));
+const comparisonRounds = computed<ComparisonRound[]>(() =>
+  buildComparisonRounds(currentAnalysis.value, previousComparisonSession.value?.analysis ?? null)
+);
+const completedSessions = computed(() =>
+  sessions.value
+    .filter((session) => session.status === 'completed')
+    .sort((left, right) => new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime())
+);
+const historySession = computed(() => completedSessions.value[historyIndex.value] ?? null);
+const historyComparison = computed(() =>
+  historySession.value
+    ? buildComparisonRounds(
+        historySession.value.analysis,
+        findPreviousComparableSession(historySession.value, sessions.value)?.analysis ?? null
+      )
+    : []
+);
+
+function syncActualWorkDuration(): void {
+  const recentSameProfile = sessions.value
+    .filter((session) => session.profileId === selectedProfile.value.id)
+    .sort((left, right) => new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime())[0];
+
+  runtime.value = {
+    ...runtime.value,
+    actualWorkDurationSec: getDefaultActualWorkDurationSec(selectedProfile.value, recentSameProfile ?? null)
+  };
+}
+
+function ensureReadyState(): void {
+  runtime.value = {
+    ...runtime.value,
+    status: monitor.isConnected() ? 'ready' : 'idle'
+  };
+}
+
+function startTicking(): void {
+  stopTicking();
+  lastPhaseCueKey = null;
+  tickTimerId = window.setInterval(async () => {
+    const currentRuntime = runtime.value;
+
+    if (currentRuntime.status === 'countdown') {
+      const remaining = currentRuntime.countdownRemainingSec - 1;
+      runtime.value = {
+        ...currentRuntime,
+        countdownRemainingSec: remaining
+      };
+
+      if (remaining <= 0) {
+        runtime.value = {
+          ...runtime.value,
+          status: 'running',
+          countdownRemainingSec: 3,
+          elapsedSec: 0
+        };
+        await requestWakeLock();
+      }
+      return;
+    }
+
+    if (currentRuntime.status !== 'running') {
+      return;
+    }
+
+    const nextElapsed = Math.min(currentPlan.value.totalDurationSec, currentRuntime.elapsedSec + 1);
+    const nextPhase = getPhaseAtElapsedSec(currentPlan.value, nextElapsed);
+    runtime.value = {
+      ...currentRuntime,
+      elapsedSec: nextElapsed,
+      scrubElapsedSec: null
+    };
+
+    const phaseRemainingSec = nextPhase.endSec - nextElapsed;
+    if (
+      nextPhase.endSec < currentPlan.value.totalDurationSec &&
+      phaseRemainingSec === 3 &&
+      lastPhaseCueKey !== nextPhase.key
+    ) {
+      lastPhaseCueKey = nextPhase.key;
+      void playPhaseTransitionAudio();
+    }
+
+    if (nextElapsed >= currentPlan.value.totalDurationSec) {
+      await finishSession('completed');
+    }
+  }, 1000);
+}
+
+function stopTicking(): void {
+  if (tickTimerId !== null) {
+    window.clearInterval(tickTimerId);
+    tickTimerId = null;
+  }
+  lastPhaseCueKey = null;
+}
+
+async function finishSession(status: 'completed' | 'ended_early'): Promise<void> {
+  stopTicking();
+  await releaseWakeLock();
+
+  const finishedAt = new Date().toISOString();
+  const analysis = analyzeSessionRounds(currentPlan.value, runtime.value.samples);
+  const integrity = deriveSessionIntegrity(status, runtime.value.isCompromised, runtime.value.hrCoverageComplete, analysis);
+  const startedAt = runtime.value.startedAt ?? finishedAt;
+
+  const record: SessionRecord = {
+    id: crypto.randomUUID(),
+    startedAt,
+    endedAt: finishedAt,
+    name: createSessionName(startedAt),
+    profileId: selectedProfile.value.id,
+    profileName: selectedProfile.value.name,
+    profileSnapshot: selectedProfile.value,
+    actualWorkDurationSec: runtime.value.actualWorkDurationSec,
+    status,
+    isCompromised: integrity.isCompromised,
+    hrCoverageComplete: integrity.hrCoverageComplete,
+    plan: currentPlan.value,
+    samples: runtime.value.samples,
+    analysis
+  };
+
+  sessions.value = [record, ...sessions.value];
+  historyIndex.value = 0;
+  await persistSnapshot();
+
+  runtime.value = {
+    ...runtime.value,
+    status,
+    elapsedSec: currentPlan.value.totalDurationSec,
+    scrubElapsedSec: currentPlan.value.totalDurationSec
+  };
+}
+
+async function initialize(): Promise<void> {
+  if (initialized.value) {
+    return;
+  }
+
+  const snapshot = await loadSnapshot();
+  batch(() => {
+    profiles.value = snapshot.profiles;
+    sessions.value = snapshot.sessions;
+    selectedProfileId.value = snapshot.settings.selectedProfileId || snapshot.profiles[0]?.id || '';
+    historyIndex.value = 0;
+    initialized.value = true;
+  });
+  syncActualWorkDuration();
+}
+
+function getHistorySessionIndex(sessionId: string): number {
+  return Math.max(
+    0,
+    completedSessions.value.findIndex((session) => session.id === sessionId)
+  );
+}
+
+export const appStore = {
+  initialized,
+  runtime,
+  activeRoute,
+  profiles,
+  sessions,
+  selectedProfile,
+  currentPlan,
+  currentPhase,
+  comparisonRounds,
+  completedSessions,
+  historySession,
+  historyComparison,
+  profileDraft,
+  draftProfileId,
+  pendingProfileSwitchId,
+  pendingEditProfileId,
+  showUnsavedModal,
+  device: computed(() => monitorInfo),
+  isHomeSessionVisible: computed(() => !['idle', 'connecting_hr', 'ready'].includes(runtime.value.status)),
+  canOpenDevices: computed(() => monitor.isConnected() || isSessionActive(runtime.value.status)),
+  canOpenHistory: computed(() => !isSessionActive(runtime.value.status) && !isCountdownActive(runtime.value.status) && completedSessions.value.length > 0),
+  canOpenSettings: computed(() => !isSessionActive(runtime.value.status) && !isCountdownActive(runtime.value.status)),
+  homeComparison: comparisonRounds,
+  currentSessionScrub: computed(() => getScrubPointData(runtime.value.samples, runtime.value.scrubElapsedSec ?? runtime.value.elapsedSec)),
+  historyScrub: computed(() => {
+    const session = historySession.value;
+    if (!session) {
+      return { elapsedSec: 0, bpm: null };
+    }
+    return getScrubPointData(session.samples, runtime.value.scrubElapsedSec ?? session.plan.totalDurationSec);
+  }),
+
+  async initialize() {
+    await initialize();
+  },
+
+  setRoute(path: string) {
+    activeRoute.value = path;
+  },
+
+  async connectDevice() {
+    runtime.value = { ...runtime.value, status: 'connecting_hr' };
+    try {
+      monitorInfo = await monitor.connect();
+      ensureReadyState();
+    } catch (error) {
+      console.error('Failed to connect to monitor', error);
+      monitorInfo = null;
+      runtime.value = {
+        ...runtime.value,
+        status: 'idle'
+      };
+    }
+  },
+
+  async reconnectDevice() {
+    try {
+      await monitor.disconnect();
+      monitorInfo = await monitor.connect();
+      if (!isSessionActive(runtime.value.status)) {
+        ensureReadyState();
+      }
+    } catch (error) {
+      console.error('Failed to reconnect to monitor', error);
+      monitorInfo = null;
+      if (!isSessionActive(runtime.value.status)) {
+        runtime.value = {
+          ...runtime.value,
+          status: 'idle'
+        };
+      }
+    }
+  },
+
+  async disconnectDevice() {
+    await monitor.disconnect();
+    monitorInfo = null;
+
+    if (isSessionActive(runtime.value.status)) {
+      runtime.value = {
+        ...runtime.value,
+        isCompromised: true,
+        hrCoverageComplete: false
+      };
+      await finishSession('ended_early');
+      return;
+    }
+
+    runtime.value = {
+      ...runtime.value,
+      status: 'idle',
+      bpm: null
+    };
+  },
+
+  setActualWorkDuration(value: number) {
+    runtime.value = {
+      ...runtime.value,
+      actualWorkDurationSec: Math.max(1, value)
+    };
+  },
+
+  async startSession() {
+    runtime.value = {
+      ...runtime.value,
+      status: 'countdown',
+      startedAt: new Date().toISOString(),
+      elapsedSec: 0,
+      countdownRemainingSec: 3,
+      isCompromised: false,
+      hrCoverageComplete: true,
+      samples: [],
+      scrubElapsedSec: null
+    };
+    void playCountdownAudio();
+    startTicking();
+  },
+
+  togglePauseResume() {
+    const status = runtime.value.status;
+    if (status === 'running') {
+      runtime.value = { ...runtime.value, status: 'paused' };
+      void releaseWakeLock();
+    } else if (status === 'paused') {
+      runtime.value = { ...runtime.value, status: 'running' };
+      void requestWakeLock();
+    }
+  },
+
+  async markConnectionLost() {
+    runtime.value = {
+      ...runtime.value,
+      isCompromised: true,
+      hrCoverageComplete: false,
+      samples: [...runtime.value.samples, { elapsedSec: runtime.value.elapsedSec, bpm: null }]
+    };
+    await finishSession('ended_early');
+  },
+
+  setScrubElapsedSec(value: number | null) {
+    runtime.value = {
+      ...runtime.value,
+      scrubElapsedSec: value
+    };
+  },
+
+  openCompletedSessionInHistory(sessionId?: string) {
+    const selectedSessionId = sessionId ?? completedSessions.value[0]?.id;
+    if (!selectedSessionId) {
+      return;
+    }
+    historyIndex.value = getHistorySessionIndex(selectedSessionId);
+    activeRoute.value = '/history';
+    window.history.pushState({}, '', '/history');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  },
+
+  stepHistory(direction: -1 | 1) {
+    historyIndex.value = Math.max(0, Math.min(completedSessions.value.length - 1, historyIndex.value + direction));
+    runtime.value = {
+      ...runtime.value,
+      scrubElapsedSec: historySession.value?.plan.totalDurationSec ?? null
+    };
+  },
+
+  deleteHistorySession(sessionId: string) {
+    sessions.value = sessions.value.filter((session) => session.id !== sessionId);
+    historyIndex.value = Math.min(historyIndex.value, Math.max(0, completedSessions.value.length - 1));
+    void persistSnapshot();
+  },
+
+  beginEditingProfile(profileId: string) {
+    const profile = profiles.value.find((item) => item.id === profileId);
+    if (!profile) {
+      return;
+    }
+    draftProfileId.value = profileId;
+    profileDraft.value = { ...profile, isDirty: false };
+  },
+
+  requestSelectProfile(profileId: string) {
+    if (profileDraft.value?.isDirty && draftProfileId.value && draftProfileId.value !== profileId) {
+      pendingProfileSwitchId.value = profileId;
+      pendingEditProfileId.value = null;
+      showUnsavedModal.value = true;
+      return;
+    }
+
+    selectedProfileId.value = profileId;
+    if (!draftProfileId.value || draftProfileId.value !== profileId) {
+      this.beginEditingProfile(profileId);
+    }
+    syncActualWorkDuration();
+    void persistSnapshot();
+  },
+
+  confirmDiscardAndSwitchProfile() {
+    const nextProfileId = pendingProfileSwitchId.value;
+    const nextEditProfileId = pendingEditProfileId.value;
+    showUnsavedModal.value = false;
+    pendingProfileSwitchId.value = null;
+    pendingEditProfileId.value = null;
+
+    if (nextEditProfileId) {
+      this.beginEditingProfile(nextEditProfileId);
+      return;
+    }
+
+    if (!nextProfileId) {
+      return;
+    }
+    this.beginEditingProfile(nextProfileId);
+    selectedProfileId.value = nextProfileId;
+    syncActualWorkDuration();
+    void persistSnapshot();
+  },
+
+  cancelDiscardSwitch() {
+    showUnsavedModal.value = false;
+    pendingProfileSwitchId.value = null;
+    pendingEditProfileId.value = null;
+  },
+
+  requestEditProfile(profileId: string) {
+    if (profileDraft.value?.isDirty && draftProfileId.value && draftProfileId.value !== profileId) {
+      pendingProfileSwitchId.value = null;
+      pendingEditProfileId.value = profileId;
+      showUnsavedModal.value = true;
+      return;
+    }
+
+    this.beginEditingProfile(profileId);
+  },
+
+  updateDraftProfile(patch: Partial<SessionProfile>) {
+    const draft = profileDraft.value;
+    if (!draft) {
+      return;
+    }
+    profileDraft.value = {
+      ...draft,
+      ...patch,
+      isDirty: true
+    };
+  },
+
+  updateDraftRecovery(index: number, value: number) {
+    const draft = profileDraft.value;
+    if (!draft) {
+      return;
+    }
+    const nextBaseRestsSec = [...draft.baseRestsSec];
+    nextBaseRestsSec[index] = Math.max(1, value);
+    profileDraft.value = {
+      ...draft,
+      baseRestsSec: nextBaseRestsSec,
+      isDirty: true
+    };
+  },
+
+  cloneDraftRecovery(index: number) {
+    const draft = profileDraft.value;
+    if (!draft) {
+      return;
+    }
+    const nextBaseRestsSec = [...draft.baseRestsSec];
+    nextBaseRestsSec.splice(index + 1, 0, nextBaseRestsSec[index] ?? 30);
+    profileDraft.value = {
+      ...draft,
+      baseRestsSec: nextBaseRestsSec,
+      isDirty: true
+    };
+  },
+
+  deleteDraftRecovery(index: number) {
+    const draft = profileDraft.value;
+    if (!draft || draft.baseRestsSec.length <= 1) {
+      return;
+    }
+    const nextBaseRestsSec = [...draft.baseRestsSec];
+    nextBaseRestsSec.splice(index, 1);
+    profileDraft.value = {
+      ...draft,
+      baseRestsSec: nextBaseRestsSec,
+      isDirty: true
+    };
+  },
+
+  async saveDraftProfile() {
+    const draft = profileDraft.value;
+    if (!draft) {
+      return;
+    }
+
+    const referenced = this.hasProfileReferences(draft.id);
+    const original = profiles.value.find((profile) => profile.id === draft.id);
+    const uniqueName = createUniqueProfileName(
+      profiles.value.filter((profile) => profile.id !== draft.id).map((profile) => profile.name),
+      draft.name
+    );
+    const nextProfile: SessionProfile = {
+      id: draft.id,
+      name: uniqueName,
+      notes: draft.notes,
+      workDurationSec: referenced ? original?.workDurationSec ?? draft.workDurationSec : draft.workDurationSec,
+      nominalPeakHeartrate: referenced ? original?.nominalPeakHeartrate ?? draft.nominalPeakHeartrate : draft.nominalPeakHeartrate,
+      warmupSec: referenced ? original?.warmupSec ?? draft.warmupSec : draft.warmupSec,
+      baseRestsSec: referenced ? original?.baseRestsSec ?? draft.baseRestsSec : draft.baseRestsSec,
+      cooldownBaseSec: referenced ? original?.cooldownBaseSec ?? draft.cooldownBaseSec : draft.cooldownBaseSec
+    };
+
+    profiles.value = profiles.value.map((profile) => (profile.id === draft.id ? nextProfile : profile));
+
+    sessions.value = sessions.value.map((session) =>
+      session.profileId === draft.id ? { ...session, profileName: nextProfile.name } : session
+    );
+    profileDraft.value = { ...nextProfile, isDirty: false };
+    await persistSnapshot();
+    syncActualWorkDuration();
+  },
+
+  copyProfile(profileId: string) {
+    const source = profiles.value.find((profile) => profile.id === profileId);
+    if (!source) {
+      return;
+    }
+
+    const name = createUniqueProfileName(
+      profiles.value.map((profile) => profile.name),
+      source.name
+    );
+    const copy = {
+      ...source,
+      id: crypto.randomUUID(),
+      name
+    };
+    profiles.value = [...profiles.value, copy];
+    this.beginEditingProfile(copy.id);
+    void persistSnapshot();
+  },
+
+  deleteProfile(profileId: string) {
+    if (profiles.value.length <= 1) {
+      return;
+    }
+    profiles.value = profiles.value.filter((profile) => profile.id !== profileId);
+    if (selectedProfileId.value === profileId) {
+      selectedProfileId.value = profiles.value[0]?.id ?? '';
+    }
+    if (draftProfileId.value === profileId) {
+      this.beginEditingProfile(selectedProfileId.value);
+    }
+    syncActualWorkDuration();
+    void persistSnapshot();
+  },
+
+  hasProfileReferences(profileId: string): boolean {
+    return sessions.value.some((session) => session.profileId === profileId);
+  },
+
+  async exportBackup() {
+    const snapshot: AppSnapshot = {
+      profiles: profiles.value,
+      sessions: sessions.value,
+      settings: { selectedProfileId: selectedProfileId.value }
+    };
+    const blob = new Blob([createExportPayload(snapshot)], { type: 'application/json' });
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = href;
+    anchor.download = 'hiit-master-backup.json';
+    anchor.click();
+    URL.revokeObjectURL(href);
+  },
+
+  async importBackup(file: File) {
+    const payload = parseImportPayload(await file.text());
+    profiles.value = payload.profiles;
+    sessions.value = payload.sessions;
+    selectedProfileId.value = payload.settings.selectedProfileId;
+    await replaceSnapshot(payload);
+    this.beginEditingProfile(selectedProfileId.value);
+    syncActualWorkDuration();
+  }
+};
