@@ -32,8 +32,12 @@ export function DevicesScreen() {
     <section class="mx-auto flex min-h-[75vh] max-w-3xl flex-col gap-5">
       <header class="rounded-[2rem] border border-app-line bg-app-panel p-6 shadow-card">
         <p class="text-xs uppercase tracking-[0.34em] text-app-muted">Connected Monitor</p>
-        <h2 class="mt-3 font-display text-4xl leading-none">{deviceName ?? 'Reconnecting...'}</h2>
-        <p class="mt-4 text-sm leading-6 text-app-muted">{buildStatusCopy(stage, isCurrentSessionCompromised)}</p>
+        <h2 class="mt-3 font-display text-4xl leading-none">
+          {deviceName ?? (isCurrentSessionCompromised && (stage === 'running' || stage === 'paused') ? 'Connection Lost' : 'Reconnecting...')}
+        </h2>
+        <p class="mt-4 text-sm leading-6 text-app-muted">
+          {buildStatusCopy(stage, isCurrentSessionCompromised, deviceName !== null)}
+        </p>
       </header>
 
       <div class="grid gap-5 md:grid-cols-2">
@@ -103,7 +107,11 @@ export function DevicesScreen() {
   );
 }
 
-function buildStatusCopy(stage: string, isCurrentSessionCompromised: boolean) {
+function buildStatusCopy(stage: string, isCurrentSessionCompromised: boolean, hasConnectedDevice: boolean) {
+  if (isCurrentSessionCompromised && !hasConnectedDevice && (stage === 'running' || stage === 'paused')) {
+    return 'The workout is still active, but heart-rate coverage is compromised until you reconnect a monitor. Reconnect can resume live samples, but the session remains comparison-ineligible.';
+  }
+
   if (isCurrentSessionCompromised) {
     return 'The last session ended early because the monitor disconnected during an active workout.';
   }

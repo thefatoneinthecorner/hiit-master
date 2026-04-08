@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/preact';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppStateProvider } from '../../application/session/AppStateContext';
 import type { Profile } from '../../domain/shared/types';
@@ -33,7 +33,7 @@ describe('HomeScreen', () => {
     expect(screen.queryByText('Remaining')).toBeNull();
   });
 
-  it('shows connected setup details after connecting', () => {
+  it('shows connected setup details after connecting', async () => {
     render(
       <AppStateProvider>
         <HomeScreen />
@@ -42,14 +42,16 @@ describe('HomeScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
-    expect(screen.getByRole('button', { name: 'Start' })).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Start' })).toBeTruthy();
+    });
     expect(screen.getByText('Live BPM')).toBeTruthy();
     expect(screen.getByText('Selected Profile')).toBeTruthy();
     expect(screen.getByText('Actual Work Duration')).toBeTruthy();
     expect(screen.getByText('20s')).toBeTruthy();
   });
 
-  it('shows the session layout immediately during countdown and advances the countdown timer', () => {
+  it('shows the session layout immediately during countdown and advances the countdown timer', async () => {
     vi.useFakeTimers();
 
     render(
@@ -58,10 +60,18 @@ describe('HomeScreen', () => {
       </AppStateProvider>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Start' })).toBeTruthy();
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
 
-    expect(screen.getByText(/Countdown 4/i)).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText(/Countdown 4/i)).toBeTruthy();
+    });
     expect(screen.getAllByText('Warmup').length).toBeGreaterThan(0);
     expect(screen.getByText('Remaining')).toBeTruthy();
     expect(screen.getByText('Heart Graph')).toBeTruthy();
@@ -73,10 +83,12 @@ describe('HomeScreen', () => {
       vi.advanceTimersToNextTimer();
     });
 
-    expect(screen.getByText(/Countdown 3/i)).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText(/Countdown 3/i)).toBeTruthy();
+    });
   });
 
-  it('advances through the workout and exposes completed-session actions', () => {
+  it('advances through the workout and exposes completed-session actions', async () => {
     vi.useFakeTimers();
 
     render(
@@ -86,6 +98,9 @@ describe('HomeScreen', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Start' })).toBeTruthy();
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
 
     for (let step = 0; step < 16; step += 1) {
@@ -94,7 +109,9 @@ describe('HomeScreen', () => {
       });
     }
 
-    expect(screen.getByText('Completed')).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText('Completed')).toBeTruthy();
+    });
     expect(screen.getByText(/Tap a graph below to inspect this session in History/i)).toBeTruthy();
     expect(screen.getByText(/No prior comparison session yet/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Return To Setup' })).toBeTruthy();

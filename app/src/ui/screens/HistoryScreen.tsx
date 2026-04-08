@@ -10,7 +10,6 @@ export function HistoryScreen() {
     currentHistorySession,
     deleteHistorySession,
     historySessions,
-    profile,
     showAdjacentHistorySession,
   } = useAppState();
   const [scrubIndex, setScrubIndex] = useState(0);
@@ -20,13 +19,15 @@ export function HistoryScreen() {
     setScrubIndex(0);
   }, [currentHistorySession?.id]);
 
+  const historyProfile = currentHistorySession?.profileSnapshot ?? null;
+
   const historyPlan = useMemo(() => {
-    if (currentHistorySession === null) {
+    if (currentHistorySession === null || historyProfile === null) {
       return null;
     }
 
-    return buildWorkoutPlan(profile, currentHistorySession.actualWorkDurationSec);
-  }, [currentHistorySession, profile]);
+    return buildWorkoutPlan(historyProfile, currentHistorySession.actualWorkDurationSec);
+  }, [currentHistorySession, historyProfile]);
 
   const roundWindows = useMemo(() => {
     if (historyPlan === null) {
@@ -110,7 +111,10 @@ export function HistoryScreen() {
   }
 
   const histogramBars = buildHistoryHistogramBars(diffDeltas);
-  const heartBars = buildHistoryHeartBars(samples, profile.nominalPeakHeartrate);
+  const heartBars = buildHistoryHeartBars(
+    samples,
+    historyProfile?.nominalPeakHeartrate ?? 140,
+  );
 
   return (
     <section
@@ -179,8 +183,8 @@ export function HistoryScreen() {
         </div>
         <div class="mt-4 grid grid-cols-[auto_1fr] gap-4">
           <div class="flex flex-col justify-between text-xs text-app-muted">
-            <span>{profile.nominalPeakHeartrate} bpm</span>
-            <span>{Math.max(40, profile.nominalPeakHeartrate - 100)} bpm</span>
+            <span>{historyProfile?.nominalPeakHeartrate ?? '--'} bpm</span>
+            <span>{Math.max(40, (historyProfile?.nominalPeakHeartrate ?? 140) - 100)} bpm</span>
           </div>
           <div class="rounded-[1.5rem] bg-app-canvas p-4">
             <div class="flex h-44 items-end gap-2">

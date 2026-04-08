@@ -1,7 +1,12 @@
-import { act, fireEvent, render, screen } from '@testing-library/preact';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppStateProvider, useAppState } from '../../application/session/AppStateContext';
 import type { Profile } from '../../domain/shared/types';
+import type {
+  ConnectedMonitor,
+  HeartRateMonitorAdapter,
+  MonitorEventHandlers,
+} from '../../infrastructure/bluetooth/heartRateMonitorAdapter';
 import { DevicesScreen } from './DevicesScreen';
 
 const compactProfile: Profile = {
@@ -14,6 +19,33 @@ const compactProfile: Profile = {
   cooldownBaseSec: 2,
   notes: '',
 };
+
+function createControlledLiveMonitorAdapter() {
+  let handlers: MonitorEventHandlers | null = null;
+
+  const adapter: HeartRateMonitorAdapter = {
+    mode: 'live',
+    connect: async (nextHandlers): Promise<ConnectedMonitor> => {
+      handlers = nextHandlers;
+
+      return {
+        batteryPercent: 76,
+        deviceId: 'ble-monitor-1',
+        name: 'BLE Monitor',
+      };
+    },
+    disconnect: async () => {
+      handlers = null;
+    },
+  };
+
+  return {
+    adapter,
+    emitDisconnect() {
+      handlers?.onDisconnect();
+    },
+  };
+}
 
 function DeviceHarness() {
   const {
@@ -70,7 +102,7 @@ describe('DevicesScreen', () => {
     expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull();
   });
 
-  it('shows current device status when a monitor is connected', () => {
+  it('shows current device status when a monitor is connected', async () => {
     render(
       <AppStateProvider>
         <DeviceHarness />
@@ -80,6 +112,9 @@ describe('DevicesScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Harness Connect' }));
 
+    await waitFor(() => {
+      expect(screen.getByText('Polar OH1 36F91927')).toBeTruthy();
+    });
     expect(screen.getByText('Polar OH1 36F91927')).toBeTruthy();
     expect(screen.getByText('Battery')).toBeTruthy();
     expect(screen.getByText('80%')).toBeTruthy();
@@ -89,7 +124,7 @@ describe('DevicesScreen', () => {
     expect(screen.getByText('Harness Devices Tab: enabled')).toBeTruthy();
   });
 
-  it('hardwires the battery percentage in device-test mode', () => {
+  it('hardwires the battery percentage in device-test mode', async () => {
     render(
       <AppStateProvider deviceTestMode>
         <DeviceHarness />
@@ -99,11 +134,14 @@ describe('DevicesScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Harness Connect' }));
 
+    await waitFor(() => {
+      expect(screen.getByText('33%')).toBeTruthy();
+    });
     expect(screen.getByText('33%')).toBeTruthy();
     expect(screen.getByText(/battery is hardwired to 33%/i)).toBeTruthy();
   });
 
-  it('keeps a paused session resumable after reconnect', () => {
+  it('keeps a paused session resumable after reconnect', async () => {
     vi.useFakeTimers();
 
     render(
@@ -113,7 +151,10 @@ describe('DevicesScreen', () => {
       </AppStateProvider>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Harness Connect' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Harness Connect' }));
+      await Promise.resolve();
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Harness Start' }));
 
     for (let step = 0; step < 5; step += 1) {
@@ -127,8 +168,10 @@ describe('DevicesScreen', () => {
     expect(screen.getByText('Harness Stage: paused')).toBeTruthy();
     expect(screen.getByText('Polar OH1 36F91927')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }));
-
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }));
+      await Promise.resolve();
+    });
     expect(screen.getByText('Harness Stage: paused')).toBeTruthy();
     expect(screen.getByText('Polar H10 17A5B204')).toBeTruthy();
     expect(
@@ -136,7 +179,7 @@ describe('DevicesScreen', () => {
     ).toBeTruthy();
   });
 
-  it('disconnects and compromises an active session', () => {
+  it('disconnects and compromises an active session', async () => {
     vi.useFakeTimers();
 
     render(
@@ -146,7 +189,13 @@ describe('DevicesScreen', () => {
       </AppStateProvider>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Harness Connect' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Harness Connect' }));
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Harness Devices Tab: enabled')).toBeTruthy();
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Harness Start' }));
 
     for (let step = 0; step < 5; step += 1) {
@@ -155,13 +204,54 @@ describe('DevicesScreen', () => {
       });
     }
 
-    expect(screen.getByText('Harness Stage: running')).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText('Harness Stage: running')).toBeTruthy();
+    });
 
     fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
 
-    expect(screen.getByText('Harness Stage: completed')).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText('Harness Stage: completed')).toBeTruthy();
+    });
     expect(screen.getByText('Harness Device: none')).toBeTruthy();
     expect(screen.getByText('Harness Compromised: yes')).toBeTruthy();
     expect(screen.getByText('Unavailable')).toBeTruthy();
+  });
+
+  it('shows active-session reconnect guidance after an unexpected monitor loss', async () => {
+    vi.useFakeTimers();
+    const monitor = createControlledLiveMonitorAdapter();
+
+    render(
+      <AppStateProvider initialProfile={compactProfile} monitorAdapter={monitor.adapter} tickMs={10}>
+        <DeviceHarness />
+        <DevicesScreen />
+      </AppStateProvider>,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Harness Connect' }));
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Harness Start' }));
+
+    for (let step = 0; step < 5; step += 1) {
+      act(() => {
+        vi.advanceTimersToNextTimer();
+      });
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText('Harness Stage: running')).toBeTruthy();
+    });
+
+    act(() => {
+      monitor.emitDisconnect();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/The workout is still active, but heart-rate coverage is compromised until you reconnect a monitor/i)).toBeTruthy();
+    });
+    expect(screen.getByText('Connection Lost')).toBeTruthy();
   });
 });

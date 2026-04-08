@@ -1,11 +1,15 @@
 import { createContext, type ComponentChildren } from 'preact';
-import { useContext, useEffect, useMemo, useState } from 'preact/hooks';
+import { useContext, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { createCountdownAudioController, type CountdownAudioController } from '../audio/countdownAudio';
 import { analyzeRoundRecoveries, buildDiffDeltas, type RoundRecoveryStats, type RoundWindow } from '../../domain/analysis/recovery';
 import { selectPreviousComparisonSession } from '../../domain/session/eligibility';
 import { sanitizeHeartRateSample } from '../../domain/session/hrIntegrity';
 import type { HeartRateSample, Profile, SessionRecord } from '../../domain/shared/types';
 import { getDefaultActualWorkDurationSec } from '../../domain/workout/defaults';
 import { buildWorkoutPlan, type WorkoutPhase, type WorkoutPlan } from '../../domain/workout/plan';
+import type { HeartRateMonitorAdapter } from '../../infrastructure/bluetooth/heartRateMonitorAdapter';
+import { createSimulatedHeartRateMonitorAdapter } from '../../infrastructure/bluetooth/simulatedHeartRateMonitorAdapter';
+import { loadPersistedAppState, savePersistedAppState } from '../../infrastructure/storage/appStorage';
 import { syncScreenWakeLock } from '../wakelock/screenWakeLock';
 
 type SessionStage = 'idle' | 'countdown' | 'running' | 'paused' | 'completed';
@@ -71,6 +75,9 @@ type AppStateProviderProps = {
   initialProfile?: Profile;
   initialProfiles?: Profile[];
   deviceTestMode?: boolean;
+  monitorAdapter?: HeartRateMonitorAdapter;
+  countdownAudioController?: CountdownAudioController;
+  persistenceEnabled?: boolean;
   tickMs?: number;
 };
 
@@ -87,7 +94,6 @@ const starterProfile: Profile = {
 
 const countdownLeadInSec = 4;
 const connectedRestingBpm = 48;
-const deviceCatalog = ['Polar OH1 36F91927', 'Polar H10 17A5B204'] as const;
 
 const AppStateContext = createContext<AppStateValue | null>(null);
 
@@ -97,8 +103,19 @@ export function AppStateProvider({
   initialProfile = starterProfile,
   initialProfiles,
   deviceTestMode = false,
+  monitorAdapter,
+  countdownAudioController,
+  persistenceEnabled = false,
   tickMs = 1000,
 }: AppStateProviderProps) {
+  const activeMonitorAdapter = useMemo(
+    () => monitorAdapter ?? createSimulatedHeartRateMonitorAdapter(),
+    [monitorAdapter],
+  );
+  const activeCountdownAudioController = useMemo(
+    () => countdownAudioController ?? createCountdownAudioController(),
+    [countdownAudioController],
+  );
   const seededProfiles = initialProfiles ?? [initialProfile];
 
   const [savedSessions, setSavedSessions] = useState<SessionRecord[]>(initialSessions);
@@ -108,9 +125,9 @@ export function AppStateProvider({
   const [selectedProfileId, setSelectedProfileId] = useState<string>(
     (seededProfiles[0] ?? starterProfile).id,
   );
-  const [connectedDeviceIndex, setConnectedDeviceIndex] = useState(0);
   const [deviceName, setDeviceName] = useState<string | null>(null);
-  const [batteryPercent] = useState<number | null>(deviceTestMode ? 33 : 80);
+  const [connectedDeviceId, setConnectedDeviceId] = useState<string | null>(null);
+  const [batteryPercent, setBatteryPercent] = useState<number | null>(deviceTestMode ? 33 : null);
   const profile =
     profiles.find((candidate) => candidate.id === selectedProfileId) ?? profiles[0] ?? starterProfile;
   const latestSessionForProfile = savedSessions
@@ -126,11 +143,16 @@ export function AppStateProvider({
   const [plan, setPlan] = useState<WorkoutPlan | null>(null);
   const [liveBpm, setLiveBpm] = useState<number | null>(null);
   const [livePulseVersion, setLivePulseVersion] = useState(0);
+  const [sessionSamples, setSessionSamples] = useState<HeartRateSample[]>([]);
   const [activeSessionStartedAt, setActiveSessionStartedAt] = useState<string | null>(null);
   const [activeSessionPersisted, setActiveSessionPersisted] = useState(false);
   const [currentHistorySessionId, setCurrentHistorySessionId] = useState<string | null>(
     initialSessions.find((session) => session.status === 'completed')?.id ?? null,
   );
+  const [storageHydrated, setStorageHydrated] = useState(!persistenceEnabled);
+  const stageRef = useRef(stage);
+  const elapsedSecRef = useRef(elapsedSec);
+  const stopCountdownAudioRef = useRef<(() => void) | null>(null);
 
   const updateLiveBpm = (nextBpm: number | null) => {
     setLiveBpm(nextBpm);
@@ -138,16 +160,63 @@ export function AppStateProvider({
   };
 
   useEffect(() => {
+    stageRef.current = stage;
+  }, [stage]);
+
+  useEffect(() => {
+    elapsedSecRef.current = elapsedSec;
+  }, [elapsedSec]);
+
+  useEffect(() => {
     setActualWorkDurationSec(getDefaultActualWorkDurationSec(profile.workDurationSec, latestSessionForProfile));
   }, [latestSessionForProfile, profile.id, profile.workDurationSec]);
 
   useEffect(() => {
-    if (deviceName === null || stage !== 'idle') {
+    if (!persistenceEnabled) {
       return;
     }
 
-    updateLiveBpm(connectedRestingBpm);
-  }, [deviceName, stage]);
+    let isActive = true;
+
+    void loadPersistedAppState()
+      .then((persistedState) => {
+        if (!isActive || persistedState === null || persistedState.profiles.length === 0) {
+          setStorageHydrated(true);
+          return;
+        }
+
+        setProfiles(persistedState.profiles);
+        setSelectedProfileId(persistedState.selectedProfileId);
+        setSavedSessions(persistedState.sessions);
+        setCurrentHistorySessionId(
+          persistedState.sessions
+            .filter((session) => session.status === 'completed')
+            .sort((left, right) => right.startedAt.localeCompare(left.startedAt))[0]?.id ?? null,
+        );
+        setStorageHydrated(true);
+      })
+      .catch(() => {
+        if (isActive) {
+          setStorageHydrated(true);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [persistenceEnabled]);
+
+  useEffect(() => {
+    if (!persistenceEnabled || !storageHydrated) {
+      return;
+    }
+
+    void savePersistedAppState({
+      profiles,
+      selectedProfileId,
+      sessions: savedSessions,
+    });
+  }, [persistenceEnabled, profiles, savedSessions, selectedProfileId, storageHydrated]);
 
   useEffect(() => {
     if (stage !== 'countdown') {
@@ -167,6 +236,22 @@ export function AppStateProvider({
 
     return () => window.clearTimeout(timeoutId);
   }, [countdownRemainingSec, stage, tickMs]);
+
+  useEffect(() => {
+    if (stage !== 'countdown') {
+      stopCountdownAudioRef.current?.();
+      stopCountdownAudioRef.current = null;
+      return;
+    }
+
+    stopCountdownAudioRef.current?.();
+    stopCountdownAudioRef.current = activeCountdownAudioController.playCountdownCue();
+
+    return () => {
+      stopCountdownAudioRef.current?.();
+      stopCountdownAudioRef.current = null;
+    };
+  }, [activeCountdownAudioController, stage]);
 
   useEffect(() => {
     if (stage !== 'running' || plan === null) {
@@ -189,6 +274,19 @@ export function AppStateProvider({
 
     return () => window.clearTimeout(timeoutId);
   }, [plan, stage, elapsedSec, tickMs]);
+
+  useEffect(() => {
+    if (
+      activeMonitorAdapter.mode !== 'live' ||
+      stage !== 'running' ||
+      !isCurrentSessionCompromised ||
+      connectedDeviceId !== null
+    ) {
+      return;
+    }
+
+    setSessionSamples((current) => appendSessionSample(current, elapsedSec, null));
+  }, [activeMonitorAdapter.mode, connectedDeviceId, elapsedSec, isCurrentSessionCompromised, stage]);
 
   const currentPhase = useMemo(() => {
     if (plan === null) {
@@ -229,8 +327,12 @@ export function AppStateProvider({
 
     const visibleElapsedSec = Math.min(elapsedSec, plan.totalDurationSec);
 
+    if (activeMonitorAdapter.mode === 'live') {
+      return sessionSamples.filter((sample) => sample.elapsedSec <= visibleElapsedSec);
+    }
+
     return allPlannedSamples.filter((sample) => sample.elapsedSec <= visibleElapsedSec);
-  }, [allPlannedSamples, elapsedSec, plan, stage]);
+  }, [activeMonitorAdapter.mode, allPlannedSamples, elapsedSec, plan, sessionSamples, stage]);
 
   const currentRecoveries = useMemo(
     () =>
@@ -248,9 +350,9 @@ export function AppStateProvider({
     return {
       id: 'active-session',
       startedAt: activeSessionStartedAt,
-      profileName: profile.name,
+      profileId: profile.id,
     };
-  }, [activeSessionStartedAt, profile.name]);
+  }, [activeSessionStartedAt, profile.id]);
 
   const previousComparisonSession = useMemo(() => {
     if (currentSessionForComparison === null) {
@@ -312,11 +414,12 @@ export function AppStateProvider({
           startedAt: activeSessionStartedAt,
           profileId: profile.id,
           profileName: profile.name,
+          profileSnapshot: profile,
           actualWorkDurationSec,
           nominalWorkDurationSec: profile.workDurationSec,
           status: 'completed',
-          isCompromised: false,
-          heartRateCoverageComplete: true,
+          isCompromised: isCurrentSessionCompromised,
+          heartRateCoverageComplete: hasCompleteHeartRateCoverage(currentSamples),
           samples: currentSamples,
         },
         ...current,
@@ -328,6 +431,7 @@ export function AppStateProvider({
     activeSessionStartedAt,
     actualWorkDurationSec,
     currentSamples,
+    isCurrentSessionCompromised,
     profile.id,
     profile.name,
     profile.workDurationSec,
@@ -349,7 +453,7 @@ export function AppStateProvider({
   }, [currentHistorySession, currentHistorySessionId, historySessions]);
 
   useEffect(() => {
-    if (stage === 'idle' || stage === 'completed') {
+    if (activeMonitorAdapter.mode === 'live' || stage === 'idle' || stage === 'completed') {
       return;
     }
 
@@ -363,7 +467,7 @@ export function AppStateProvider({
     const phaseKind = currentPhase?.kind ?? 'warmup';
     const drift = phaseKind === 'work' ? elapsedSec % 6 : elapsedSec % 4;
     updateLiveBpm(baseBpmByPhase[phaseKind] + drift);
-  }, [currentPhase, elapsedSec, stage]);
+  }, [activeMonitorAdapter.mode, currentPhase, elapsedSec, stage]);
 
   useEffect(() => {
     void syncScreenWakeLock(stage === 'running');
@@ -494,7 +598,13 @@ export function AppStateProvider({
         if (previousProfile !== undefined && nextProfile.name !== previousProfile.name) {
           setSavedSessions((current) =>
             current.map((session) =>
-              session.profileId === profileId ? { ...session, profileName: nextProfile.name } : session,
+              session.profileId === profileId
+                ? {
+                    ...session,
+                    profileName: nextProfile.name,
+                    profileSnapshot: { ...session.profileSnapshot, name: nextProfile.name },
+                  }
+                : session,
             ),
           );
         }
@@ -531,19 +641,97 @@ export function AppStateProvider({
           setSelectedProfileId(remainingProfiles[0]?.id ?? starterProfile.id);
         }
       },
-      connectMonitor: () => {
-        setDeviceName(deviceCatalog[connectedDeviceIndex] ?? deviceCatalog[0]);
+      connectMonitor: async () => {
+        const connection = await activeMonitorAdapter.connect({
+          onDisconnect: () => {
+            setConnectedDeviceId(null);
+            setDeviceName(null);
+            setBatteryPercent(null);
+            updateLiveBpm(null);
+
+            if (stageRef.current === 'running' || stageRef.current === 'paused') {
+              setIsCurrentSessionCompromised(true);
+              setSessionSamples((current) =>
+                appendSessionSample(current, elapsedSecRef.current, null),
+              );
+            }
+          },
+          onSample: (bpm) => {
+            const sanitized = sanitizeHeartRateSample({ elapsedSec: elapsedSecRef.current, bpm });
+
+            if (sanitized === null) {
+              return;
+            }
+
+            updateLiveBpm(sanitized.bpm);
+
+            if (
+              stageRef.current === 'running' ||
+              stageRef.current === 'paused' ||
+              stageRef.current === 'completed'
+            ) {
+              setSessionSamples((current) =>
+                appendSessionSample(current, elapsedSecRef.current, sanitized.bpm),
+              );
+            }
+          },
+        });
+
+        setConnectedDeviceId(connection.deviceId);
+        setDeviceName(connection.name);
+        setBatteryPercent(deviceTestMode ? 33 : connection.batteryPercent);
         updateLiveBpm(connectedRestingBpm);
       },
-      reconnectMonitor: () => {
-        setConnectedDeviceIndex((current) => {
-          const nextIndex = (current + 1) % deviceCatalog.length;
-          setDeviceName(deviceCatalog[nextIndex] ?? deviceCatalog[0]);
-          updateLiveBpm(stage === 'paused' ? connectedRestingBpm : Math.max(liveBpm ?? 0, connectedRestingBpm));
-          return nextIndex;
+      reconnectMonitor: async () => {
+        if (connectedDeviceId !== null) {
+          await activeMonitorAdapter.disconnect(connectedDeviceId);
+        }
+
+        const connection = await activeMonitorAdapter.connect({
+          onDisconnect: () => {
+            setConnectedDeviceId(null);
+            setDeviceName(null);
+            setBatteryPercent(null);
+            updateLiveBpm(null);
+
+            if (stageRef.current === 'running' || stageRef.current === 'paused') {
+              setIsCurrentSessionCompromised(true);
+              setSessionSamples((current) =>
+                appendSessionSample(current, elapsedSecRef.current, null),
+              );
+            }
+          },
+          onSample: (bpm) => {
+            const sanitized = sanitizeHeartRateSample({ elapsedSec: elapsedSecRef.current, bpm });
+
+            if (sanitized === null) {
+              return;
+            }
+
+            updateLiveBpm(sanitized.bpm);
+
+            if (
+              stageRef.current === 'running' ||
+              stageRef.current === 'paused' ||
+              stageRef.current === 'completed'
+            ) {
+              setSessionSamples((current) =>
+                appendSessionSample(current, elapsedSecRef.current, sanitized.bpm),
+              );
+            }
+          },
         });
+
+        setConnectedDeviceId(connection.deviceId);
+        setDeviceName(connection.name);
+        setBatteryPercent(deviceTestMode ? 33 : connection.batteryPercent);
+        updateLiveBpm(stage === 'paused' ? connectedRestingBpm : Math.max(liveBpm ?? 0, connectedRestingBpm));
       },
-      disconnectMonitor: () => {
+      disconnectMonitor: async () => {
+        if (connectedDeviceId !== null) {
+          await activeMonitorAdapter.disconnect(connectedDeviceId);
+        }
+
         if (stage === 'running' || stage === 'paused') {
           setSavedSessions((current) => [
             {
@@ -551,11 +739,12 @@ export function AppStateProvider({
               startedAt: activeSessionStartedAt ?? new Date().toISOString(),
               profileId: profile.id,
               profileName: profile.name,
+              profileSnapshot: profile,
               actualWorkDurationSec,
               nominalWorkDurationSec: profile.workDurationSec,
               status: 'ended_early',
               isCompromised: true,
-              heartRateCoverageComplete: currentSamples.length > 0,
+              heartRateCoverageComplete: hasCompleteHeartRateCoverage(currentSamples),
               samples: currentSamples,
             },
             ...current,
@@ -573,7 +762,9 @@ export function AppStateProvider({
           setIsCurrentSessionCompromised(false);
         }
 
+        setConnectedDeviceId(null);
         setDeviceName(null);
+        setBatteryPercent(null);
         updateLiveBpm(null);
       },
       setActualWorkDurationSec: (durationSec: number) => {
@@ -587,6 +778,7 @@ export function AppStateProvider({
         const nextPlan = buildWorkoutPlan(profile, actualWorkDurationSec);
         setPlan(nextPlan);
         setElapsedSec(0);
+        setSessionSamples([]);
         setCountdownRemainingSec(countdownLeadInSec);
         setActiveSessionStartedAt(new Date().toISOString());
         setActiveSessionPersisted(false);
@@ -611,6 +803,7 @@ export function AppStateProvider({
         setActiveSessionStartedAt(null);
         setActiveSessionPersisted(false);
         setIsCurrentSessionCompromised(false);
+        setSessionSamples([]);
         updateLiveBpm(deviceName === null ? null : connectedRestingBpm);
       },
       showLatestHistorySession: () => {
@@ -647,7 +840,7 @@ export function AppStateProvider({
       activeSessionPersisted,
       activeSessionStartedAt,
       batteryPercent,
-      connectedDeviceIndex,
+      connectedDeviceId,
       countdownRemainingSec,
       currentHistoryIndex,
       currentHistorySession,
@@ -660,17 +853,19 @@ export function AppStateProvider({
       diffDeltas,
       elapsedSec,
       historySessions,
+      liveBpm,
+      activeMonitorAdapter,
       profile,
       profiles,
       selectedProfileId,
       isCurrentSessionCompromised,
-      liveBpm,
       livePulseVersion,
       phaseRemainingSec,
       plan,
       previousComparisonSession,
       progressPercent,
       savedSessions,
+      sessionSamples,
       stage,
       totalRemainingSec,
     ],
@@ -714,6 +909,25 @@ function makeUniqueProfileName(baseName: string, profiles: readonly Profile[]) {
   return candidate;
 }
 
+function appendSessionSample(
+  currentSamples: readonly HeartRateSample[],
+  elapsedSec: number,
+  bpm: number | null,
+) {
+  const nextSample = { elapsedSec, bpm };
+  const sampleIndex = currentSamples.findIndex((sample) => sample.elapsedSec === elapsedSec);
+
+  if (sampleIndex < 0) {
+    return [...currentSamples, nextSample];
+  }
+
+  return currentSamples.map((sample, index) => (index === sampleIndex ? nextSample : sample));
+}
+
+function hasCompleteHeartRateCoverage(samples: readonly HeartRateSample[]) {
+  return samples.length > 0 && samples.every((sample) => sample.bpm !== null);
+}
+
 function isValidProfile(value: unknown): value is Profile {
   if (typeof value !== 'object' || value === null) {
     return false;
@@ -744,6 +958,7 @@ function isValidSessionRecord(value: unknown): value is SessionRecord {
     typeof candidate.startedAt === 'string' &&
     typeof candidate.profileId === 'string' &&
     typeof candidate.profileName === 'string' &&
+    isValidProfile(candidate.profileSnapshot) &&
     typeof candidate.actualWorkDurationSec === 'number' &&
     typeof candidate.nominalWorkDurationSec === 'number' &&
     typeof candidate.status === 'string' &&

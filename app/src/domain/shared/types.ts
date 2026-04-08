@@ -21,6 +21,7 @@ export type SessionRecord = {
   startedAt: string;
   profileId: string;
   profileName: string;
+  profileSnapshot: Profile;
   actualWorkDurationSec: number;
   nominalWorkDurationSec: number;
   status: SessionStatus;

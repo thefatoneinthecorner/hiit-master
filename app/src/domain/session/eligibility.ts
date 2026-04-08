@@ -10,14 +10,14 @@ export function isComparisonEligible(session: SessionRecord) {
 }
 
 export function selectPreviousComparisonSession(
-  currentSession: Pick<SessionRecord, 'id' | 'startedAt' | 'profileName'>,
+  currentSession: Pick<SessionRecord, 'id' | 'startedAt' | 'profileId'>,
   earlierSessions: readonly SessionRecord[],
 ) {
   return earlierSessions
     .filter(
       (session) =>
         session.id !== currentSession.id &&
-        session.profileName === currentSession.profileName &&
+        session.profileId === currentSession.profileId &&
         session.startedAt < currentSession.startedAt &&
         isComparisonEligible(session),
     )

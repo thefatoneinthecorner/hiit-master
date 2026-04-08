@@ -1,9 +1,21 @@
-import { act, fireEvent, render, screen } from '@testing-library/preact';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppStateProvider } from '../../application/session/AppStateContext';
 import type { Profile, SessionRecord } from '../../domain/shared/types';
 import { HistoryScreen } from './HistoryScreen';
 import { SettingsScreen } from './SettingsScreen';
+import { downloadBackupFile } from '../../infrastructure/storage/backupFile';
+
+vi.mock('../../infrastructure/storage/backupFile', async () => {
+  const actual = await vi.importActual<typeof import('../../infrastructure/storage/backupFile')>(
+    '../../infrastructure/storage/backupFile',
+  );
+
+  return {
+    ...actual,
+    downloadBackupFile: vi.fn(),
+  };
+});
 
 const ellipticalProfile: Profile = {
   id: 'profile-elliptical',
@@ -21,6 +33,16 @@ const starterSession: SessionRecord = {
   startedAt: '2026-04-07T19:00:00.000Z',
   profileId: 'profile-my-profile',
   profileName: 'My Profile',
+  profileSnapshot: {
+    id: 'profile-my-profile',
+    name: 'My Profile',
+    workDurationSec: 30,
+    nominalPeakHeartrate: 160,
+    warmupSec: 120,
+    baseRestsSec: [60, 50, 40, 30],
+    cooldownBaseSec: 90,
+    notes: 'Starter profile',
+  },
   actualWorkDurationSec: 20,
   nominalWorkDurationSec: 30,
   status: 'completed',
@@ -38,6 +60,7 @@ const starterSession: SessionRecord = {
 describe('SettingsScreen', () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.clearAllMocks();
   });
 
   it('shows import export and the starter profile by default', () => {
@@ -53,7 +76,7 @@ describe('SettingsScreen', () => {
     expect(screen.getByText('Selected Profile')).toBeTruthy();
   });
 
-  it('exports and imports backup data', () => {
+  it('exports and imports backup data through a file flow', async () => {
     render(
       <AppStateProvider initialProfiles={[{ ...ellipticalProfile, id: 'profile-my-profile', name: 'My Profile' }, ellipticalProfile]}>
         <SettingsScreen />
@@ -62,9 +85,8 @@ describe('SettingsScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Export' }));
 
-    const backupArea = screen.getByRole('textbox', { name: 'Backup Data' }) as HTMLTextAreaElement;
-    const exported = backupArea.value;
-
+    expect(downloadBackupFile).toHaveBeenCalledTimes(1);
+    const exported = vi.mocked(downloadBackupFile).mock.calls[0]?.[0] ?? '';
     expect(exported).toContain('"profiles"');
     expect(exported).toContain('"Elliptical"');
 
@@ -72,10 +94,16 @@ describe('SettingsScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
     expect(screen.getByDisplayValue('Temporary Name')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    const backupInput = screen.getByLabelText('Backup File') as HTMLInputElement;
+    const backupFile = new File([exported], 'backup.json', { type: 'application/json' });
 
-    expect(screen.getByDisplayValue('My Profile')).toBeTruthy();
+    fireEvent.change(backupInput, { target: { files: [backupFile] } });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('My Profile')).toBeTruthy();
+    });
     expect(screen.getByText('Backup imported.')).toBeTruthy();
+    expect(screen.getByText(/Selected backup: backup\.json/i)).toBeTruthy();
   });
 
   it('lets the user select a different profile and uses it for the next session', () => {
@@ -159,5 +187,26 @@ describe('SettingsScreen', () => {
     fireEvent.pointerUp(decrementButton);
 
     expect(screen.getAllByText('114s').length).toBeGreaterThan(0);
+  });
+
+  it('marks recovery rows as expanded when opened and reveals their controls', () => {
+    render(
+      <AppStateProvider>
+        <SettingsScreen />
+      </AppStateProvider>,
+    );
+
+    const warmupToggle = screen.getByRole('button', { name: 'Warmup' });
+    fireEvent.click(warmupToggle);
+
+    expect(warmupToggle.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getAllByRole('button', { name: '-' }).length).toBeGreaterThan(0);
+
+    const roundToggle = screen.getByRole('button', { name: 'Round 1' });
+    fireEvent.click(roundToggle);
+
+    expect(roundToggle.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Clone' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy();
   });
 });

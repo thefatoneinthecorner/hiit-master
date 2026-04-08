@@ -30,6 +30,18 @@
   }
 }
 
+@keyframes settings-row-reveal {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @layer utilities {
   .bg-app-canvas {
     background-color: rgb(var(--app-canvas));
@@ -79,5 +91,9 @@
 
   .shadow-card {
     box-shadow: 0 20px 60px rgb(110 95 73 / 0.08);
+  }
+
+  .animate-settings-row-reveal {
+    animation: settings-row-reveal 180ms ease-out;
   }
 }

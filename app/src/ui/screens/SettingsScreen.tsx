@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useAppState } from '../../application/session/AppStateContext';
 import type { Profile } from '../../domain/shared/types';
+import { downloadBackupFile, readBackupFile } from '../../infrastructure/storage/backupFile';
 
 type ExpandedRow = 'warmup' | 'cooldown' | `round-${number}` | null;
 
@@ -19,8 +20,9 @@ export function SettingsScreen() {
   } = useAppState();
   const [draft, setDraft] = useState<Profile>(profile);
   const [expandedRow, setExpandedRow] = useState<ExpandedRow>(null);
-  const [backupDraft, setBackupDraft] = useState('');
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
+  const [selectedBackupName, setSelectedBackupName] = useState<string | null>(null);
+  const backupInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setDraft(profile);
@@ -46,8 +48,8 @@ export function SettingsScreen() {
               <button
                 type="button"
                 onClick={() => {
-                  setBackupDraft(exportBackup());
-                  setBackupStatus('Backup exported to the text area below.');
+                  downloadBackupFile(exportBackup());
+                  setBackupStatus('Backup exported as a JSON file.');
                 }}
                 class="inline-flex min-h-11 items-center justify-center rounded-[1rem] border border-app-line bg-app-canvas px-4 text-sm font-semibold"
               >
@@ -55,10 +57,7 @@ export function SettingsScreen() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  const result = importBackup(backupDraft);
-                  setBackupStatus(result.message);
-                }}
+                onClick={() => backupInputRef.current?.click()}
                 class="inline-flex min-h-11 items-center justify-center rounded-[1rem] border border-app-line bg-app-canvas px-4 text-sm font-semibold"
               >
                 Import
@@ -66,17 +65,44 @@ export function SettingsScreen() {
             </div>
           </div>
 
-          <label class="mt-6 block">
-            <span class="text-xs uppercase tracking-[0.28em] text-app-muted">Backup Data</span>
-            <textarea
-              value={backupDraft}
-              onInput={(event) => setBackupDraft(event.currentTarget.value)}
-              rows={8}
-              class="mt-3 w-full rounded-[1.2rem] border border-app-line bg-app-canvas px-4 py-3 font-mono text-sm outline-none"
-            />
-          </label>
+          <input
+            ref={backupInputRef}
+            type="file"
+            accept=".json,application/json"
+            aria-label="Backup File"
+            class="sr-only"
+            onChange={async (event) => {
+              const inputElement = event.currentTarget;
+              const file = inputElement.files?.[0] ?? null;
+
+              if (file === null) {
+                setBackupStatus('Import cancelled.');
+                return;
+              }
+
+              setSelectedBackupName(file.name);
+
+              try {
+                const serialized = await readBackupFile(file);
+                const result = importBackup(serialized);
+                setBackupStatus(result.message);
+              } catch {
+                setBackupStatus('Import failed: backup file could not be read.');
+              } finally {
+                inputElement.value = '';
+              }
+            }}
+          />
+          <div class="mt-6 rounded-[1.4rem] border border-dashed border-app-line bg-app-canvas px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.28em] text-app-muted">Backup File</p>
+            <p class="mt-3 text-sm leading-6 text-app-muted">
+              {selectedBackupName === null
+                ? 'Export downloads a backup JSON file. Import restores profiles and sessions from a previously exported file.'
+                : `Selected backup: ${selectedBackupName}`}
+            </p>
+          </div>
           <p class="mt-3 text-sm leading-6 text-app-muted">
-            {backupStatus ?? 'Export fills this field with app data. Import restores profiles and session history from JSON.'}
+            {backupStatus ?? 'Choose Export to save a backup file, or Import to restore one.'}
           </p>
 
           <div class="mt-8 space-y-3">
@@ -329,13 +355,22 @@ function RecoveryRow({
   onIncrease,
 }: RecoveryRowProps) {
   return (
-    <div class="overflow-hidden rounded-[1.4rem] bg-app-canvas">
+    <div
+      class={`overflow-hidden rounded-[1.4rem] border transition-colors duration-200 ${
+        expanded ? 'border-app-accent bg-app-panel' : 'border-transparent bg-app-canvas'
+      }`}
+    >
       <div class="flex items-center justify-between gap-4 px-4 py-4">
-        <button type="button" onClick={onToggle} class="text-left font-semibold">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          class="text-left font-semibold"
+        >
           {label}
         </button>
         {expanded && canClone ? (
-          <span class="flex gap-2">
+          <span class="animate-settings-row-reveal flex gap-2">
             <button
               type="button"
               onClick={(event) => {
@@ -365,7 +400,7 @@ function RecoveryRow({
       </div>
 
       {expanded ? (
-        <div class="border-t border-app-line px-4 py-4">
+        <div class="animate-settings-row-reveal border-t border-app-line px-4 py-4">
           <Stepper value={value} onDecrease={onDecrease} onIncrease={onIncrease} disabled={locked} />
         </div>
       ) : null}
