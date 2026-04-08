@@ -30,6 +30,14 @@ Required profile fields:
 - `cooldownBaseSec`
 - `notes`
 
+Required shipped starter profile:
+
+- `name`: `My Profile`
+- `workDurationSec`: `30`
+- `warmupSec`: `300`
+- `cooldownBaseSec`: `180`
+- `baseRestsSec`: `[90, 75, 60, 45, 35, 30, 30, 30, 30, 30, 30, 30]`
+
 ## App settings
 
 Required app-level stored settings include:

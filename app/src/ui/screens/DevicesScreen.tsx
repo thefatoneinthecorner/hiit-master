@@ -98,7 +98,7 @@ export function DevicesScreen() {
         <button
           type="button"
           onClick={disconnectMonitor}
-          class="inline-flex min-h-14 items-center justify-center rounded-[1.5rem] bg-app-accent px-6 text-base font-semibold text-app-canvas shadow-card"
+          class="inline-flex min-h-14 items-center justify-center rounded-[1.5rem] bg-app-accent px-6 text-base font-semibold text-app-accent-ink shadow-card"
         >
           Disconnect
         </button>

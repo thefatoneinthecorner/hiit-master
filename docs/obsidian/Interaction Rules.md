@@ -28,6 +28,15 @@
 - Mobile: swipe horizontally between sessions
 - Desktop: use explicit chevrons
 
+## Scroll behavior
+
+- `Home` is non-scrolling in all of its main states.
+- The live `Home` session screen must remain fully usable without vertical scrolling.
+- The live `Home` session screen is designed for use during training, including treadmill/gym environments where the athlete may not be able to interact with the phone.
+- `Devices` is also non-scrolling; its content must remain compact enough to fit without vertical scrolling.
+- `History` is allowed to scroll vertically.
+- `Settings` is allowed to scroll vertically.
+
 ## Recovery row editing (Settings page)
 
 - Tapping a row expands it

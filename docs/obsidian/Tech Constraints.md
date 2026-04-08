@@ -49,3 +49,7 @@
 - This build is intended to be the production-oriented rebuild, not an exploratory prototype.
 - Prefer clearer structure and stronger invariants over fast-but-fragile iteration.
 - If a design detail is ambiguous, follow the product docs rather than improvising new UX patterns.
+- Treat the product screen docs as prescriptive, not illustrative.
+- Prefer omission over invention when a screen-level detail is not explicitly specified.
+- Do not add extra helper copy, extra controls, or extra summary UI unless the product docs explicitly require them.
+- See [[Design Constraints]] for the product-level fidelity rules.

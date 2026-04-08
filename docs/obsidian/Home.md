@@ -23,6 +23,19 @@ Immediately below the Heartrate Graph a smaller "Recovery Delta Diff" graph is d
 
 `Home` is the primary workout screen. It handles monitor connection, workout start, and the live in-session view.
 
+## Scroll behavior
+
+Required behavior:
+
+- `Home` should not scroll vertically.
+- The disconnected setup, connected setup, startup countdown, active session, paused session, and completed-session variants must all fit within the available viewport without requiring scrolling.
+
+Design intent:
+
+- `Home`, especially the live session screen, is designed for use in a gym environment.
+- During a live session the athlete may be on a treadmill or similar equipment and may be unable to interact with the phone.
+- The key information must therefore remain visible without requiring any scrolling gesture.
+
 ## States
 
 Required behavior:
@@ -63,10 +76,15 @@ Required behavior:
 - The app switches into the session view before the `3-2-1-0` beeps complete.
 - Graphs, `Round`, and `Remaining` are visible during countdown.
 - Countdown styling uses the green/rest visual treatment.
+- The countdown audio uses a one-second cadence: three short beeps followed by one long beep.
+- The beeps should be approximately aligned with the visible countdown timer updates so the sound and timer feel synchronized to the user.
+- Exact millisecond synchronization is not required, but audible and visible countdown events should not drift apart enough to feel delayed or disconnected.
 
 Design intent:
 
 - The user should see the actual session layout before the workout begins.
+- The startup countdown should feel rhythmically steady and predictable.
+- The athlete should not experience an annoying lag between the countdown digits and the beep sequence.
 
 ### Active session
 
@@ -83,6 +101,14 @@ Design intent:
 
 - The active session should be glanceable under physical strain.
 - Dense or tiny text should be minimized.
+
+## Explicit non-goals
+
+- No extra explanatory paragraphs beyond the documented labels and status copy.
+- No additional summary cards, warnings, or derived stat panels unless explicitly specified.
+- No extra graphs beyond the heart graph and recovery histogram.
+- No extra actions beyond the documented session controls.
+- If a Home detail is ambiguous, omit it rather than inventing new copy or new UI.
 
 ### Completed Session
 

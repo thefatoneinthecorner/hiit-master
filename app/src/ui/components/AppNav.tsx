@@ -24,7 +24,7 @@ export function AppNav({ currentPath, items, variant }: AppNavProps) {
         {items.map((item) => {
           const isActive = currentPath === item.href;
           const commonClass = isActive
-            ? 'border-app-accent bg-app-accent text-app-canvas'
+            ? 'border-app-accent bg-app-accent text-app-accent-ink'
             : 'border-app-line bg-app-panel text-app-ink';
 
           return (

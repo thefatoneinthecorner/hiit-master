@@ -87,6 +87,14 @@ Required terminology:
 - `Selected Profile`: the profile that will be used for upcoming sessions
 - `My Profile`: the starter profile shipped with the app
 
+Starter profile parameters:
+
+- nominal work period: `30s`
+- warmup: `5m`
+- cooldown: `3m`
+- first five recovery rounds: `90s`, `75s`, `60s`, `45s`, `35s`
+- final seven recovery rounds: `30s` each
+
 Design intent:
 
 - `Selected Profile` is clearer than `Default Profile` or `Active Profile`

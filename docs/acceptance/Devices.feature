@@ -37,11 +37,21 @@ Feature: Devices screen and monitor management
     And the Live BPM card should be visible
     And "Reconnect" should be visible
     And "Disconnect" should be visible
+    And no workout-start controls should be visible
+    And no history or session-analysis panels should be visible
+    And the Devices screen should not require vertical scrolling
 
   Scenario: Device test mode hardwires battery percentage
     Given device-test mode is enabled
     And the user opens the Devices screen
     Then the battery display should show 33 percent
+
+  Scenario: Devices remains a minimal utility screen
+    Given the user opens the Devices screen
+    When the device-management UI is displayed
+    Then only device-management readouts and actions should be shown
+    And no additional troubleshooting, coaching, or explanatory sections should be visible unless explicitly specified
+    And the screen should not require vertical scrolling
 
   Scenario: Reconnect performs a fresh connection flow
     Given a heart-rate monitor is connected

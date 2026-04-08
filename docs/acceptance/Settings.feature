@@ -4,12 +4,23 @@ Feature: Settings and session profile management
     Given the user opens the Settings screen
     Then the user should see an Import action
     And the user should see an Export action
+    And no unrelated general-preferences controls should be visible
+
+  Scenario: Settings may scroll vertically
+    Given the user opens the Settings screen
+    When the profile-management content exceeds the viewport height
+    Then the Settings screen should allow vertical scrolling
 
   Scenario: App ships with a starter profile
     Given the app has been installed for the first time
     When the user opens Settings
     Then at least one profile should exist
     And a starter profile named "My Profile" should exist
+    And the nominal work duration of "My Profile" should be 30 seconds
+    And the warmup of "My Profile" should be 5 minutes
+    And the cooldown of "My Profile" should be 3 minutes
+    And the first five recovery rounds of "My Profile" should be 90, 75, 60, 45, and 35 seconds
+    And the final seven recovery rounds of "My Profile" should each be 30 seconds
 
   Scenario: One and only one selected profile exists
     Given multiple profiles exist
@@ -62,6 +73,12 @@ Feature: Settings and session profile management
     When the user taps a recovery-related row
     Then that row should expand
     And its controls should be revealed with a short animation
+    And no unrelated helper panels should appear
+
+  Scenario: The full width of a recovery row is tappable
+    Given the user is editing a profile
+    When the user taps the recovery row away from the text label
+    Then that row should still expand
 
   Scenario: Warmup and cooldown cannot be cloned or deleted
     Given the user is editing a profile
@@ -94,3 +111,16 @@ Feature: Settings and session profile management
     Then the value should repeat in 5 second increments
     And repetition should stop immediately when the press is released
 
+  Scenario: Switching profiles warns before discarding unsaved edits
+    Given the user has unsaved amendments on the current profile
+    When the user attempts to switch to a different profile
+    Then the app should show a confirmation modal
+    And the modal should explain that the unsaved amendments will be lost if the user continues
+    And the user should be able to cancel and remain on the current profile with the draft edits intact
+    And the user should be able to confirm discarding the draft and switch profiles
+
+  Scenario: Settings remains limited to backup and profile management
+    Given the user opens the Settings screen
+    When the Settings UI is displayed
+    Then only backup and session-profile management UI should be shown
+    And no additional dashboards, coaching summaries, or unrelated preferences should be visible

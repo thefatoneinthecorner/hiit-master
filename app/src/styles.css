@@ -9,7 +9,10 @@
   --app-line: 183 169 146;
   --app-ink: 34 30 24;
   --app-muted: 109 99 85;
-  --app-accent: 39 84 72;
+  --app-accent: 47 107 93;
+  --app-accent-ink: 247 244 236;
+  --app-danger: 159 58 50;
+  --app-danger-ink: 255 246 244;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -67,12 +70,36 @@
     color: rgb(var(--app-accent));
   }
 
+  .text-app-accent-ink {
+    color: rgb(var(--app-accent-ink));
+  }
+
   .border-app-accent {
     border-color: rgb(var(--app-accent));
   }
 
   .bg-app-accent {
     background-color: rgb(var(--app-accent));
+  }
+
+  .bg-app-accent-soft {
+    background-color: rgb(var(--app-accent) / 0.7);
+  }
+
+  .bg-app-accent-strong {
+    background-color: rgb(var(--app-accent) / 0.8);
+  }
+
+  .bg-app-line-80 {
+    background-color: rgb(var(--app-line) / 0.8);
+  }
+
+  .bg-app-danger {
+    background-color: rgb(var(--app-danger));
+  }
+
+  .text-app-danger-ink {
+    color: rgb(var(--app-danger-ink));
   }
 
   .pt-safe-top {

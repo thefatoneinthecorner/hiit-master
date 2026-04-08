@@ -15,6 +15,17 @@ Swiping left or right over this screen will move forwards and backwards through 
 
 `History` is the historical session browsing and inspection screen.
 
+## Scroll behavior
+
+Required behavior:
+
+- `History` is allowed to scroll vertically.
+
+Design intent:
+
+- `History` is used when the athlete is not actively training.
+- It may therefore trade compactness for richer inspection detail and longer historical content.
+
 ## Required capabilities
 
 - Browse previous sessions
@@ -63,6 +74,14 @@ Required table columns:
 
 - `History` should be where all historical review and deletion lives
 - Data portability should not clutter the session browsing flow
+
+## Explicit non-goals
+
+- No workout-start controls
+- No device-management controls
+- No extra explanatory or coaching copy beyond the documented readouts and labels
+- No additional analysis summaries beyond the documented scrubber readouts, histogram, stats, and table
+- If a History detail is ambiguous, omit it rather than inventing extra UI
 
 ## Open issue
 

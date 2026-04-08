@@ -123,6 +123,8 @@ src/
     builders/
 ```
 
+Theme token roles, default values, and contrast constraints are product-level requirements defined in `docs/obsidian/Theme.md`. Architecture may describe where theme code lives, but it must not redefine token semantics independently.
+
 ## Core Runtime Model
 
 The runtime should treat a workout session as a state machine.

@@ -7,6 +7,18 @@ This page displays the name of the connected heart rate monitor ("Polar OH1 36F9
 
 `Devices` is the dedicated monitor-management screen. It exists to keep connection controls out of the main workout flow.
 
+## Scroll behavior
+
+Required behavior:
+
+- `Devices` should not scroll vertically.
+- The screen must remain compact enough that its device-management content fits in the available viewport without scrolling.
+
+Design intent:
+
+- `Devices` is a compact utility screen, not a long-form information page.
+- Device management should remain accessible quickly, including during an active or paused workout.
+
 ## Availability
 
 Required behaviour:
@@ -76,6 +88,10 @@ Design intent:
 
 - No history browsing
 - No workout start flow
+- No session-analysis summaries or round statistics
+- No extra troubleshooting or coaching copy unless explicitly specified
+- No extra controls beyond `Reconnect` and `Disconnect`
+- If a device-management detail is ambiguous, omit it rather than inventing new helper text or new UI
 
 ## Related pages
 

@@ -25,6 +25,7 @@
 - [[Devices]]: current monitor management and live device readouts
 - [[History]]: browse recorded sessions and inspect historical performance
 - [[Settings]]: session profile management
+- [[Theme]]: visual token contract, default values, and contrast rules
 
 ## Major app states
 
@@ -42,8 +43,13 @@
 - Mobile-first on iPhone/Android
 - Desktop for development only
 - Minimal design, usable at a distance of roughly 1m by a user with reasonable eyesight on small screens such as iPhone SE3
+- Minimal means only the documented content and actions should appear on a screen
+- `Home` and `Devices` are deliberately non-scrolling screens
+- `History` and `Settings` are deliberately scrollable screens
 - Should be easy to use and functionality should be obvious and predictable
 - Theme-able
+- Theme defaults and token semantics are fixed by [[Theme]]
+- Screen fidelity and non-deviation rules are fixed by [[Design Constraints]]
 - Device management should not clutter the main workout flow
 - Data/history behaviour should live away from the primary workout CTA
 - Session profiles are the source of truth for workout timing

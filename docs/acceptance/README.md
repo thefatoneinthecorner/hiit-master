@@ -18,3 +18,5 @@ Notes:
 - These are acceptance-style specs, not implementation tests.
 - They are written to mirror the current product documentation rather than the current codebase.
 - If the vault changes, these specs should be updated to match.
+- Where a screen is documented as minimal, acceptance scenarios should assert both required presence and meaningful absence of extra UI.
+- If a screen must remain sparse, prefer explicit language such as `only`, `no additional`, and `no other`.

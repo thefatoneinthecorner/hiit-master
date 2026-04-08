@@ -27,6 +27,7 @@ The app does not support landscape mode.
 Start here:
 
 - [[App Map]]
+- [[Design Constraints]]
 - [[Home]]
 - [[Devices]]
 - [[History]]
@@ -48,3 +49,10 @@ Conventions:
 - `Design intent` means this explains why the behavior exists.
 - `Implementation note` means this is guidance for the rebuild, not a user-facing requirement.
 - `Open issue` means the design is incomplete or intentionally unresolved.
+
+Implementation policy:
+
+- The screen docs are prescriptive, not illustrative.
+- If a screen appears deliberately minimal, that minimal design is the requirement.
+- If a detail is ambiguous, prefer omission over invention.
+- See [[Design Constraints]] for the explicit non-deviation rules.

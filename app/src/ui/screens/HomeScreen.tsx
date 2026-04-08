@@ -56,7 +56,7 @@ export function HomeScreen() {
           <button
             type="button"
             onClick={connectMonitor}
-            class="mt-10 inline-flex min-h-14 w-full items-center justify-center rounded-[1.5rem] bg-app-accent px-6 text-base font-semibold text-app-canvas"
+            class="mt-10 inline-flex min-h-14 w-full items-center justify-center rounded-[1.5rem] bg-app-accent px-6 text-base font-semibold text-app-accent-ink"
           >
             Connect
           </button>
@@ -103,7 +103,7 @@ export function HomeScreen() {
           <button
             type="button"
             onClick={startSession}
-            class="mt-8 inline-flex min-h-14 w-full items-center justify-center rounded-[1.5rem] bg-app-accent px-6 text-base font-semibold text-app-canvas"
+            class="mt-8 inline-flex min-h-14 w-full items-center justify-center rounded-[1.5rem] bg-app-accent px-6 text-base font-semibold text-app-accent-ink"
           >
             Start
           </button>
@@ -154,7 +154,7 @@ export function HomeScreen() {
             </div>
             <div class="mt-3 h-3 overflow-hidden rounded-full bg-app-panel">
               <div
-                class={`h-full rounded-full ${stage === 'countdown' ? 'bg-app-accent/70' : 'bg-app-accent'}`}
+                class={`h-full rounded-full ${stage === 'countdown' ? 'bg-app-accent-soft' : 'bg-app-accent'}`}
                 style={{ width: `${Math.max(progressPercent, stage === 'countdown' ? 2 : 0)}%` }}
               />
             </div>
@@ -195,7 +195,7 @@ export function HomeScreen() {
               <button
                 type="button"
                 onClick={resetSession}
-                class="inline-flex min-h-12 items-center justify-center rounded-[1.2rem] bg-app-accent px-5 text-sm font-semibold text-app-canvas"
+                class="inline-flex min-h-12 items-center justify-center rounded-[1.2rem] bg-app-accent px-5 text-sm font-semibold text-app-accent-ink"
               >
                 Return To Setup
               </button>
@@ -417,7 +417,7 @@ function GraphPanel({ bars, description, eyebrow, mode = 'chart', onClick, title
 }
 
 function HistogramBaseline() {
-  return <div class="pointer-events-none absolute left-4 right-4 top-1/2 h-px bg-app-line/80" />;
+  return <div class="pointer-events-none absolute left-4 right-4 top-1/2 h-px bg-app-line-80" />;
 }
 
 function getBarToneClass(
@@ -425,7 +425,7 @@ function getBarToneClass(
   mode: 'chart' | 'histogram',
 ) {
   if (mode === 'chart') {
-    return 'bg-app-accent/80';
+    return 'bg-app-accent-strong';
   }
 
   if (tone === 'positive') {
@@ -467,7 +467,7 @@ function PhaseTimeline({ activePhaseLabel, elapsedSec, phases }: PhaseTimelinePr
             key={`${phase.label}-${phase.startSec}`}
             class={`flex items-center justify-between rounded-2xl px-3 py-2 text-sm ${
               isActive
-                ? 'bg-app-accent text-app-canvas'
+                ? 'bg-app-accent text-app-accent-ink'
                 : isComplete
                   ? 'bg-app-canvas text-app-muted'
                   : 'bg-app-canvas/60 text-app-ink'

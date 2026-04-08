@@ -19,6 +19,8 @@ Feature: History browsing and session inspection
     Then the heart graph should be visible
     And the recovery delta histogram should be visible
     And the heart graph axes should be labelled
+    And no workout-start controls should be visible
+    And no device-management controls should be visible
 
   Scenario: History still shows an empty histogram when no same-profile comparison session exists
     Given a completed session exists
@@ -26,6 +28,11 @@ Feature: History browsing and session inspection
     When the user opens that session in History
     Then the recovery delta histogram should still be visible
     And the histogram should be empty
+
+  Scenario: History may scroll vertically
+    Given the user opens History
+    When the historical inspection content exceeds the viewport height
+    Then the History screen should allow vertical scrolling
 
   Scenario: History scrubber shows detailed point-in-time information
     Given a completed session exists
@@ -52,6 +59,7 @@ Feature: History browsing and session inspection
     And it should display Trough
     And it should display Delta
     And it should display Delta Diff when available
+    And no additional analysis summary panels should be shown
 
   Scenario: History shows round data as a compact table
     Given a completed session exists
@@ -85,3 +93,9 @@ Feature: History browsing and session inspection
     Given a completed session exists
     When the user taps the trash icon for that session in History
     Then the session should be removed from stored history
+
+  Scenario: History stays focused on historical inspection only
+    Given the user opens History
+    When the historical detail screen is displayed
+    Then only historical browsing and inspection UI should be shown
+    And no extra helper text or controls should be visible beyond the documented History workflow

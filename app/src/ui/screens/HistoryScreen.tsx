@@ -189,7 +189,7 @@ export function HistoryScreen() {
           <div class="rounded-[1.5rem] bg-app-canvas p-4">
             <div class="flex h-44 items-end gap-2">
               {heartBars.map((height, index) => (
-                <div key={`history-heart-${index + 1}`} class="flex-1 rounded-t-2xl bg-app-accent/80" style={{ height: `${height}%` }} />
+                <div key={`history-heart-${index + 1}`} class="flex-1 rounded-t-2xl bg-app-accent-strong" style={{ height: `${height}%` }} />
               ))}
             </div>
             <div class="mt-3 flex justify-between text-xs text-app-muted">
@@ -223,7 +223,7 @@ export function HistoryScreen() {
       <section class="rounded-[2rem] border border-app-line bg-app-panel p-6 shadow-card">
         <p class="text-xs uppercase tracking-[0.28em] text-app-muted">Recovery Delta Histogram</p>
         <div class="relative mt-5 rounded-[1.5rem] bg-app-canvas p-4">
-          <div class="pointer-events-none absolute left-4 right-4 top-1/2 h-px bg-app-line/80" />
+          <div class="pointer-events-none absolute left-4 right-4 top-1/2 h-px bg-app-line-80" />
           <div class="flex h-40 items-end gap-3">
             {histogramBars.length > 0
               ? histogramBars.map((bar) => (

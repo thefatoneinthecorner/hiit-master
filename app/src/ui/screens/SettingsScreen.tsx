@@ -115,16 +115,16 @@ export function SettingsScreen() {
                   type="button"
                   onClick={() => selectProfile(candidate.id)}
                   class={`flex w-full items-center justify-between rounded-[1.4rem] px-4 py-4 text-left transition ${
-                    isSelected ? 'bg-app-accent text-app-canvas' : 'bg-app-canvas text-app-ink'
+                    isSelected ? 'bg-app-accent text-app-accent-ink' : 'bg-app-canvas text-app-ink'
                   }`}
                 >
                   <span>
                     <span class="block font-semibold">{candidate.name}</span>
-                    <span class={`mt-1 block text-xs uppercase tracking-[0.24em] ${isSelected ? 'text-app-canvas/75' : 'text-app-muted'}`}>
+                    <span class={`mt-1 block text-xs uppercase tracking-[0.24em] ${isSelected ? 'text-app-accent-ink opacity-75' : 'text-app-muted'}`}>
                       {isSelected ? 'Selected Profile' : 'Tap to select'}
                     </span>
                   </span>
-                  <span class={`text-xs uppercase tracking-[0.24em] ${isSelected ? 'text-app-canvas/75' : 'text-app-muted'}`}>
+                  <span class={`text-xs uppercase tracking-[0.24em] ${isSelected ? 'text-app-accent-ink opacity-75' : 'text-app-muted'}`}>
                     {candidate.baseRestsSec.length} rounds
                   </span>
                 </button>
@@ -204,7 +204,7 @@ export function SettingsScreen() {
                 type="button"
                 onClick={() => updateProfile(draft.id, { ...draft, name: draft.name.trim() })}
                 disabled={saveDisabled}
-                class="inline-flex min-h-12 items-center justify-center rounded-[1.2rem] bg-app-accent px-5 text-sm font-semibold text-app-canvas disabled:opacity-40"
+                class="inline-flex min-h-12 items-center justify-center rounded-[1.2rem] bg-app-accent px-5 text-sm font-semibold text-app-accent-ink disabled:opacity-40"
               >
                 Save Changes
               </button>

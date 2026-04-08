@@ -13,6 +13,17 @@ The image above shows the profile editor. Each profile has a name which the user
 
 This is not a general preferences page yet. It is primarily where backup/restore and session-profile management live.
 
+## Scroll behavior
+
+Required behavior:
+
+- `Settings` is allowed to scroll vertically.
+
+Design intent:
+
+- `Settings` is used when the athlete is not actively training.
+- It may therefore use a scrollable layout to expose profile management and backup workflows.
+
 ## Required capabilities
 
 - Import backup data, including profile definitions
@@ -44,6 +55,21 @@ Each profile contains:
 - Once a profile has been used by any saved session, its timing fields become read-only.
 - Once a profile has been used by any saved session, its `name` and `notes` remain editable.
 - If the athlete wants different timing values, they must clone the profile or delete the old sessions that reference it.
+
+## Starter profile
+
+Required starter profile definition:
+
+- `name`: `My Profile`
+- `workDurationSec`: `30`
+- `warmupSec`: `300`
+- `cooldownBaseSec`: `180`
+- `baseRestsSec`: `90, 75, 60, 45, 35, 30, 30, 30, 30, 30, 30, 30`
+
+Implementation note:
+
+- The first five recovery rounds are `90`, `75`, `60`, `45`, and `35` seconds.
+- The final seven recovery rounds are `30` seconds each.
 
 ## Screen sections
 
@@ -83,6 +109,7 @@ Required behavior:
 
 - Rows are compact by default
 - Tapping a row expands its controls
+- The full width of a recovery row is tappable; the user should not need to tap only the row label
 - Expanded state reveals:
   - for warmup/cooldown: only the stepper
   - for recovery rounds: clone/delete in the summary strip, plus stepper below
@@ -103,11 +130,29 @@ Required behavior:
 - long press repeats by `5s`
 - text selection/callout is suppressed on the controls
 
+## Unsaved changes
+
+Required behavior:
+
+- Profile edits remain draft-only until `Save Changes` is pressed.
+- If the user has unsaved profile amendments and attempts to switch to a different profile, the app must show a confirmation modal.
+- The confirmation modal must make it clear that unsaved amendments will be lost if the user continues.
+- The user must be able to cancel and stay on the current profile without losing the draft edits.
+- The user must be able to confirm discarding the draft and proceed to the newly selected profile.
+
 ## Design intent
 
 - Mobile-first
 - Compact list rather than stack of big cards
 - Recovery editing should feel sequence-based, not spreadsheet-based
+
+## Explicit non-goals
+
+- No general-purpose preferences unrelated to backup or session profiles
+- No extra explanatory cards or helper paragraphs beyond the documented screen sections
+- No additional profile-derived summaries unless explicitly specified
+- No extra editor workflows or validation UI unless explicitly specified
+- If a Settings detail is ambiguous, omit it rather than inventing extra copy or extra controls
 
 ## Related pages
 
