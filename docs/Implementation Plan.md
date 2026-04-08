@@ -69,12 +69,16 @@ Separate product logic from runtime/platform APIs.
 - Countdown audio adapter
 - Backup import/export file adapter
 - Clock/timer abstraction where needed for deterministic testing
+- IndexedDB schema creation / migration path for existing local databases
+- IndexedDB version-handling path that avoids downgrade errors on later startups
 
 ### Exit criteria
 
 - Product logic can run against both real adapters and deterministic test doubles
 - Runtime failures do not silently corrupt session meaning
 - BLE, storage, audio, and wake-lock behavior are isolated from UI code
+- Storage bootstrap is resilient when an older or partially-created IndexedDB database already exists locally
+- Repeated startups remain safe after a prior schema repair or version bump
 
 ## Milestone 3: Home Screen
 

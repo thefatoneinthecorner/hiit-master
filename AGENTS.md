@@ -35,3 +35,7 @@ Proceed autonomously unless blocked by one of the following:
 - Build in the milestone order described in [docs/Implementation Plan.md](docs/Implementation%20Plan.md) unless there is a strong dependency reason to vary it.
 - Verify work with appropriate tests as you go.
 - Keep implementation aligned with the documented non-goals, scrolling rules, theme rules, and starter-profile defaults.
+
+## Before finishing
+
+- Unless you get stuck, please double check that all features have been completed.

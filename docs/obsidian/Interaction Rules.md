@@ -51,6 +51,13 @@
 - Tap: adjust by `1s`
 - Long press: repeat in `5s` increments
 - Release should stop repetition immediately
+- Long press repetition must continue from the current value, not from a stale value captured when the press began.
+- A completed long press must not also apply a tap-sized `1s` increment on release.
+- Pointer cancel/leave should stop the repeat loop just like release.
+- Long press on the stepper must suppress browser context menus and touch callouts so the gesture remains owned by the control in Chrome mobile emulation and touch browsers.
+- The stepper must still allow vertical dragging to scroll the surrounding panel when the user performs a scroll gesture rather than a completed press.
+- When a field is read-only, the UI must not render dead stepper controls that look tappable; use an explicitly read-only presentation instead.
+- Stepper tap and release handling must survive minor pointer drift in Chrome mobile emulation; do not rely solely on element-local `pointerup` / `pointerleave` events to complete or stop the gesture.
 
 ## Device-test mode
 

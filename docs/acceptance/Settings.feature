@@ -50,6 +50,7 @@ Feature: Settings and session profile management
     Given a saved session references profile "My Profile"
     When the user opens the editor for "My Profile"
     Then timing fields should be read-only
+    And the timing fields should not be rendered as tappable stepper controls
     And name should remain editable
     And notes should remain editable
 
@@ -109,7 +110,12 @@ Feature: Settings and session profile management
     Then the value should change by 1 second
     When the user long-presses a stepper control
     Then the value should repeat in 5 second increments
+    And the repeated changes should continue from the latest displayed value
+    And releasing after a long press should not also add an extra 1 second tap change
     And repetition should stop immediately when the press is released
+    And the browser should not open a context menu or touch callout instead of continuing the gesture
+    And dragging vertically on the control should still allow the surrounding Settings panel to scroll
+    And a small pointer drift during a tap in Chrome mobile emulation should still register as a tap rather than dropping the input
 
   Scenario: Switching profiles warns before discarding unsaved edits
     Given the user has unsaved amendments on the current profile
@@ -123,4 +129,5 @@ Feature: Settings and session profile management
     Given the user opens the Settings screen
     When the Settings UI is displayed
     Then only backup and session-profile management UI should be shown
+    And the Home-only next-session Actual Work Duration control should not be visible
     And no additional dashboards, coaching summaries, or unrelated preferences should be visible

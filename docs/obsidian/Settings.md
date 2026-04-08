@@ -32,6 +32,7 @@ Design intent:
 - Select a profile for the next session
 - Edit a profile
 - Delete a profile subject to profile rules
+- `Settings` must not include the Home-only `Actual Work Duration` control for the next session
 
 ## Session profiles
 
@@ -55,6 +56,7 @@ Each profile contains:
 - Once a profile has been used by any saved session, its timing fields become read-only.
 - Once a profile has been used by any saved session, its `name` and `notes` remain editable.
 - If the athlete wants different timing values, they must clone the profile or delete the old sessions that reference it.
+- Read-only timing values must be presented explicitly as read-only values, not as editable-looking stepper controls with inert `+` / `-` buttons.
 
 ## Starter profile
 
@@ -113,6 +115,7 @@ Required behavior:
 - Expanded state reveals:
   - for warmup/cooldown: only the stepper
   - for recovery rounds: clone/delete in the summary strip, plus stepper below
+  - for referenced profiles with locked timing values: a read-only value display instead of editable stepper controls
 
 ### Round row summary
 
@@ -129,6 +132,12 @@ Required behavior:
 - tap changes by `1s`
 - long press repeats by `5s`
 - text selection/callout is suppressed on the controls
+- long press must continue from the latest displayed value rather than reusing the value from the initial press-down event
+- a long press must not also fire an additional tap increment on release
+- releasing, cancelling, or sliding off the control must stop repetition immediately
+- the control must suppress browser context menus / touch callouts during long press so mobile emulation and touch browsers do not steal the gesture
+- the stepper must not block normal vertical scrolling of the surrounding Settings panel when the user drags vertically instead of completing the press
+- tap and long-press completion must not depend on element-local `pointerup` / `pointerleave` delivery alone; minor pointer drift in Chrome mobile emulation must still produce the correct tap or stop event
 
 ## Unsaved changes
 

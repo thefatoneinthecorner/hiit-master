@@ -22,6 +22,9 @@ If the docs show or describe a screen in a minimal form, that minimal form is th
 - Do not add secondary workflows or convenience actions unless they are explicitly specified.
 - Do not merge screens, split screens, or move functionality across screens unless the docs explicitly require it.
 - Do not introduce decorative or “helpful” extra UI just because there appears to be empty space.
+- Do not restyle the mobile action bar as a floating card/panel if the product calls for a native-style bottom toolbar.
+- Do not leave the browser viewport as the scroll container on mobile if doing so causes the scrollbar or content to run behind a fixed bottom action bar.
+- Do not compensate for a fixed mobile action bar by leaving extra blank margin below the content once the necessary reserved space has already been accounted for.
 
 ## Minimal means
 

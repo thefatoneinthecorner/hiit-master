@@ -217,6 +217,17 @@ Suggested responsibilities:
 - load samples for session
 - save derived stats
 - query previous comparison-eligible session
+- create and migrate required object stores / schema on startup
+- detect legacy or partially-initialized databases and repair them before normal reads or writes begin
+
+Required behavior:
+
+- The storage adapter must not assume a first-run or clean-database environment.
+- The storage adapter must not hard-code an outdated database version during normal startup.
+- If the database exists but required object stores are missing, the adapter must perform a deterministic schema upgrade before attempting transactions.
+- If a database already exists at a higher version, normal startup must open that existing version without attempting a downgrade.
+- Storage initialization failures must be surfaced clearly; they must not fail later as opaque transaction errors during normal app bootstrap.
+- Schema creation and migration logic should be centralized in the storage adapter rather than spread across UI or application code.
 
 ### Bluetooth adapter
 

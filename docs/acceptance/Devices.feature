@@ -6,6 +6,20 @@ Feature: Devices screen and monitor management
     When the tab bar is displayed
     Then the Devices tab should be disabled
 
+  Scenario: Mobile tab bar is pinned to the bottom edge
+    Given the user is on a mobile layout
+    When the tab bar is displayed
+    Then the tab bar should be pinned to the bottom edge of the viewport
+    And the current screen content should not be obscured behind it
+    And any vertical scrollbar should terminate above the tab bar rather than continuing behind it
+    And no additional blank bottom margin should remain beyond the space required for the tab bar and safe-area inset
+
+  Scenario: Mobile tab bar uses a native-style full-width presentation
+    Given the user is on a mobile layout
+    When the tab bar is displayed
+    Then it should render as a full-width bottom toolbar
+    And it should not render as a floating inset panel with outer margins around it
+
   Scenario: Devices tab becomes available once a monitor is connected
     Given a heart-rate monitor is connected
     And no session is active

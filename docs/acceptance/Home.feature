@@ -22,6 +22,7 @@ Feature: Home screen and workout start flow
     And live BPM should be visible
     And the selected profile name should be visible
     And an Actual Work Duration picker should be visible
+    And the Actual Work Duration picker should snap cleanly to one selected row at rest
     And no session graphs should be visible
     And no recovery or history summary panels should be visible
     And the screen should not require vertical scrolling
@@ -45,10 +46,12 @@ Feature: Home screen and workout start flow
     When the user taps "Start"
     Then the app should enter the startup countdown
     And the session layout should be visible before the countdown beeps finish
+    And the visible countdown should begin at "3" rather than "4"
     And Round should be visible and set to "Warmup"
     And Remaining should be visible
     And the session graphs should be visible
     And the countdown should use the green rest styling
+    And the phase text should use the green rest styling
     And the "beep", "beep", "beep", "beeeeeeeep" audio cue should immediately play
     And no additional setup controls should remain visible
 
@@ -65,18 +68,35 @@ Feature: Home screen and workout start flow
     Given a workout session is running
     When the Home screen is displayed
     Then the user should see the phase timer
+    And the compact runtime readouts should appear in the order "Round", "BPM", "Remaining"
     And the user should see BPM
     And the user should see Round
     And the user should see Remaining
     And the user should see the heart-rate graph
     And the user should see the recovery delta histogram
+    And the phase and round text should use red during work phases and green otherwise
     And no unrelated helper cards or extra action buttons should be visible
     And the live session screen should not require vertical scrolling
+
+  Scenario: Active workout phases emit transition cues
+    Given a workout session is running
+    When a non-final phase is three seconds from ending
+    Then the app should start the next phase-transition cue
+    And the cue should complete on the next phase boundary
+    And that cue should use the same "beep", "beep", "beep", "beeeeeeeep" pattern as the startup countdown
+    And that cue should use the same short-beep and long-beep sounds as the startup countdown
+
+  Scenario: Round readout remains meaningful outside numbered work rounds
+    Given the Home screen is showing countdown, warmup, or cooldown
+    When the compact runtime readouts are displayed
+    Then the Round readout should not be blank
+    And it should display "Warm up" or "Cool down" as appropriate
 
   Scenario: Home remains non-scrolling in all main states
     Given the Home screen is shown in any of its documented main states
     When the user views that screen on the target mobile layout
     Then the screen should not require vertical scrolling
+    And the active-session layout should not be clipped at the bottom
 
   Scenario: Heart graph scale starts from the selected profile nominal peak
     Given the selected profile has a nominal peak heartrate of 160 bpm

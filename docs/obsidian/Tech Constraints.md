@@ -48,6 +48,10 @@
 
 - This build is intended to be the production-oriented rebuild, not an exploratory prototype.
 - Prefer clearer structure and stronger invariants over fast-but-fragile iteration.
+- Treat local persistence as an evolving production dependency, not a disposable cache.
+- Initialization code for IndexedDB or other persistent storage must handle existing on-device data and schema drift explicitly.
+- Do not assume that `onupgradeneeded` will run on every startup; storage code must cope with already-opened databases whose schema is missing required stores from earlier builds.
+- Do not assume a fixed database version on every startup; storage code must discover the existing version first and only request a higher version when a real migration is needed.
 - If a design detail is ambiguous, follow the product docs rather than improvising new UX patterns.
 - Treat the product screen docs as prescriptive, not illustrative.
 - Prefer omission over invention when a screen-level detail is not explicitly specified.

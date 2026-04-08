@@ -14,6 +14,8 @@ Once started, the display adjusts again to show the current phase timer at the t
 
 During the session, the Round name updates as the session progresses. The large "phase" timer counts down and successively restarts for the duration of the next phase (either the work duration specified in the previous screen or an adjusted recovery duration taken from the session definition). The BPM continues to display the live heart rate recorded from the monitor. The "Remaining" time counts down to zero.
 
+Each transition between session phases should emit a short cue tone during the active workout, not just at the startup countdown.
+
 The very first phase is the "Warmup". After the Warmup each "Round" starts with a "work" phase followed by a "recovery" (or "rest") phase. The very last recovery phase is known as the "Cooldown".
 
 As the session progresses the athlete's heart rate is displayed in the graph immediately under the BPM display. The vertical scale will be set to the "Nominal Peak Heartrate" specified in the profile. If the heart rate ever exceeds this, the vertical axis will adjust in `10bpm` increments as required. The horizontal axis is determined by the total length of the session which is calculated from the nominal work duration and the recovery periods for the selected profile. If the heart rate drops below its initial value, the minimum scale value will be adjusted to track the exact minimum for the session. The graph will display gridlines at multiples of `50bpm` (not shown).
@@ -29,6 +31,7 @@ Required behavior:
 
 - `Home` should not scroll vertically.
 - The disconnected setup, connected setup, startup countdown, active session, paused session, and completed-session variants must all fit within the available viewport without requiring scrolling.
+- On short mobile viewports, the active-session layout must compress internally to remain fully visible; content must not be clipped at the bottom.
 
 Design intent:
 
@@ -62,6 +65,7 @@ Required behavior:
 - Shows live BPM.
 - Shows the selected profile’s name.
 - Uses a fake iOS-style wheel for adjusting actual work duration relative to the profile's nominal work duration.
+- The wheel uses snap behavior so one duration row settles cleanly into the selected position at rest.
 
 Design intent:
 
@@ -74,11 +78,19 @@ Design intent:
 Required behavior:
 
 - The app switches into the session view before the `3-2-1-0` beeps complete.
+- The visible countdown begins at `3`, then `2`, then `1`, then `0`; there is no extra leading `4` second pre-roll before the first beep.
 - Graphs, `Round`, and `Remaining` are visible during countdown.
 - Countdown styling uses the green/rest visual treatment.
+- As an interim phase-distinction rule, round/phase text uses the green/rest treatment for countdown, warmup, rest, and cooldown.
 - The countdown audio uses a one-second cadence: three short beeps followed by one long beep.
 - The beeps should be approximately aligned with the visible countdown timer updates so the sound and timer feel synchronized to the user.
 - Exact millisecond synchronization is not required, but audible and visible countdown events should not drift apart enough to feel delayed or disconnected.
+- The startup countdown before warmup is a special case.
+- After startup, the cue for the next phase is scheduled at the end of the current phase rather than at the instant of the phase change.
+- For each non-final running phase, the cue begins three seconds before that phase ends so that the final long beep lands on the next phase boundary.
+- The final cooldown completion does not trigger an additional trailing cue.
+- The in-session transition cue uses the same full cue pattern as startup: three short beeps followed by one long beep.
+- The in-session transition cue uses the same short-beep and long-beep sounds as startup; it must not switch to a different tone family for normal phase changes.
 
 Design intent:
 
@@ -91,6 +103,11 @@ Design intent:
 Required behavior:
 
 - Shows timer, BPM, `Round`, `Remaining`, progress, and live comparison graphs.
+- The compact runtime readouts are ordered `Round`, `BPM`, `Remaining`.
+- The `Round` readout must never be blank during countdown, warmup, cooldown, or numbered rounds.
+- The `Round` readout uses `Warm up`, `Cool down`, or `Round N` wording so the label fits and wraps cleanly inside its panel on narrow mobile layouts.
+- As an interim phase-distinction rule, the phase/round text uses `danger` red during work phases and `accent` green otherwise.
+- The graph area and other runtime panels may shrink vertically on shorter mobile viewports, but the active-session screen must remain fully visible above the mobile action bar without clipping.
 - Session graphs display gridlines at configurable intervals, but are unlabelled by default.
 - The main graph displays heart rate against time.
 - The main graph’s default vertical scale is initialized from the selected profile’s `nominalPeakHeartrate`.
