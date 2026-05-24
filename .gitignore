@@ -11,3 +11,6 @@
 /docs/obsidian/.obsidian/core-plugins.json
 /.obsidian/workspace.json
 /docs/obsidian/.obsidian/workspace.json
+
+*storybook.log
+storybook-static

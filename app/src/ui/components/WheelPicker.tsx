@@ -7,25 +7,86 @@ interface WheelPickerProps {
   onChange: (next: number) => void;
 }
 
+const ITEM_HEIGHT_PX = 48;
+
 export function WheelPicker({ value, min, max, onChange }: WheelPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollFrameRef = useRef<number | null>(null);
+  const skipAutoCenterRef = useRef(false);
   const values = Array.from({ length: max - min + 1 }, (_, index) => min + index);
 
   useEffect(() => {
+    if (skipAutoCenterRef.current) {
+      skipAutoCenterRef.current = false;
+      return;
+    }
+
     const selected = containerRef.current?.querySelector<HTMLButtonElement>(`[data-value="${value}"]`);
     selected?.scrollIntoView({ block: 'center' });
   }, [value]);
 
+  useEffect(
+    () => () => {
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+      }
+    },
+    []
+  );
+
+  const commitValue = (next: number, source: 'click' | 'scroll') => {
+    if (next === value) {
+      return;
+    }
+
+    if (source === 'scroll') {
+      skipAutoCenterRef.current = true;
+    }
+
+    onChange(next);
+  };
+
+  const updateValueFromScroll = () => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const nextIndex = Math.max(0, Math.min(values.length - 1, Math.round(container.scrollTop / ITEM_HEIGHT_PX)));
+    const nextValue = values[nextIndex];
+    if (nextValue === undefined) {
+      return;
+    }
+
+    commitValue(nextValue, 'scroll');
+  };
+
+  const handleScroll = () => {
+    if (scrollFrameRef.current !== null) {
+      return;
+    }
+
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      updateValueFromScroll();
+    });
+  };
+
   return (
     <div class="relative mx-auto h-44 w-28 overflow-hidden rounded-[1.6rem] border border-[color:var(--line)] bg-[color:var(--panel)]">
       <div class="pointer-events-none absolute inset-x-2 top-1/2 h-12 -translate-y-1/2 rounded-xl border border-[color:var(--line)] bg-white/25" />
-      <div ref={containerRef} class="h-full snap-y overflow-y-auto py-16">
+      <div
+        ref={containerRef}
+        data-testid="wheel-picker-scroll"
+        onScroll={handleScroll}
+        class="h-full snap-y overflow-y-auto py-16"
+      >
         {values.map((item) => (
           <button
             key={item}
             data-value={item}
             type="button"
-            onClick={() => onChange(item)}
+            onClick={() => commitValue(item, 'click')}
             class={`block h-12 w-full snap-center text-center text-2xl font-semibold ${item === value ? 'text-[color:var(--ink)]' : 'text-[color:var(--muted)]'}`}
           >
             {item}
@@ -35,4 +96,3 @@ export function WheelPicker({ value, min, max, onChange }: WheelPickerProps) {
     </div>
   );
 }
-
