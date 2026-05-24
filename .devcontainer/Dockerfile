@@ -2,6 +2,8 @@ FROM node:24-bookworm-slim AS node-runtime
 
 FROM oven/bun:1
 
+RUN bunx --bun playwright@latest install --with-deps chromium
+
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
 

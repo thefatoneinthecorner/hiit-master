@@ -7,3 +7,12 @@ sandbox_mode = "workspace-write"
 
 # Optional hardening: disallow login shells for shell tools.
 allow_login_shell = false
+
+
+[mcp_servers.playwright]
+command = "npx"
+args = ["-y", "@playwright/mcp@latest", "--headless", "--browser", "chromium", "--isolated"]
+enabled = true
+startup_timeout_sec = 30
+tool_timeout_sec = 120
+default_tools_approval_mode = "prompt"
