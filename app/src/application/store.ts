@@ -74,9 +74,11 @@ const profileDraft = signal<ProfileDraft | null>(null);
 const pendingProfileSwitchId = signal<string | null>(null);
 const pendingEditProfileId = signal<string | null>(null);
 const showUnsavedModal = signal(false);
+const actualWorkDurationByProfileId = signal<Record<string, number>>({});
 
 let tickTimerId: number | null = null;
 let lastPhaseCueKey: string | null = null;
+const monitorInfo = signal<ConnectedMonitor | null>(null);
 
 const monitor: HeartRateMonitorAdapter = deviceTestMode
   ? new MockHeartRateMonitor(
@@ -87,8 +89,6 @@ const monitor: HeartRateMonitorAdapter = deviceTestMode
   : Capacitor.isNativePlatform()
     ? new CapacitorHeartRateMonitor()
     : new WebBluetoothHeartRateMonitor();
-let monitorInfo: ConnectedMonitor | null = null;
-
 function getTargetBpm(): number {
   const currentRuntime = runtime.value;
   if (currentRuntime.status === 'idle' || currentRuntime.status === 'ready' || currentRuntime.status === 'connecting_hr') {
@@ -135,7 +135,7 @@ monitor.onSample((incomingBpm) => {
 });
 
 monitor.onDisconnect(() => {
-  monitorInfo = null;
+  monitorInfo.value = null;
 
   if (isSessionActive(runtime.value.status)) {
     void appStore.markConnectionLost();
@@ -162,7 +162,8 @@ async function persistSnapshot(): Promise<void> {
     profiles: profiles.value,
     sessions: sessions.value,
     settings: {
-      selectedProfileId: selectedProfileId.value
+      selectedProfileId: selectedProfileId.value,
+      actualWorkDurationByProfileId: actualWorkDurationByProfileId.value
     }
   });
 }
@@ -222,13 +223,17 @@ const historyComparison = computed(() =>
 );
 
 function syncActualWorkDuration(): void {
+  const savedActualWorkDurationSec = actualWorkDurationByProfileId.value[selectedProfile.value.id];
   const recentSameProfile = sessions.value
     .filter((session) => session.profileId === selectedProfile.value.id)
     .sort((left, right) => new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime())[0];
 
   runtime.value = {
     ...runtime.value,
-    actualWorkDurationSec: getDefaultActualWorkDurationSec(selectedProfile.value, recentSameProfile ?? null)
+    actualWorkDurationSec:
+      savedActualWorkDurationSec !== undefined
+        ? Math.max(1, savedActualWorkDurationSec)
+        : getDefaultActualWorkDurationSec(selectedProfile.value, recentSameProfile ?? null)
   };
 }
 
@@ -348,6 +353,7 @@ async function initialize(): Promise<void> {
     profiles.value = snapshot.profiles;
     sessions.value = snapshot.sessions;
     selectedProfileId.value = snapshot.settings.selectedProfileId || snapshot.profiles[0]?.id || '';
+    actualWorkDurationByProfileId.value = snapshot.settings.actualWorkDurationByProfileId ?? {};
     historyIndex.value = 0;
     initialized.value = true;
   });
@@ -379,7 +385,8 @@ export const appStore = {
   pendingProfileSwitchId,
   pendingEditProfileId,
   showUnsavedModal,
-  device: computed(() => monitorInfo),
+  actualWorkDurationByProfileId,
+  device: computed(() => monitorInfo.value),
   isHomeSessionVisible: computed(() => !['idle', 'connecting_hr', 'ready'].includes(runtime.value.status)),
   canOpenDevices: computed(() => monitor.isConnected() || isSessionActive(runtime.value.status)),
   canOpenHistory: computed(() => !isSessionActive(runtime.value.status) && !isCountdownActive(runtime.value.status) && completedSessions.value.length > 0),
@@ -405,11 +412,11 @@ export const appStore = {
   async connectDevice() {
     runtime.value = { ...runtime.value, status: 'connecting_hr' };
     try {
-      monitorInfo = await monitor.connect();
+      monitorInfo.value = await monitor.connect();
       ensureReadyState();
     } catch (error) {
       console.error('Failed to connect to monitor', error);
-      monitorInfo = null;
+      monitorInfo.value = null;
       runtime.value = {
         ...runtime.value,
         status: 'idle'
@@ -420,13 +427,13 @@ export const appStore = {
   async reconnectDevice() {
     try {
       await monitor.disconnect();
-      monitorInfo = await monitor.connect();
+      monitorInfo.value = await monitor.connect();
       if (!isSessionActive(runtime.value.status)) {
         ensureReadyState();
       }
     } catch (error) {
       console.error('Failed to reconnect to monitor', error);
-      monitorInfo = null;
+      monitorInfo.value = null;
       if (!isSessionActive(runtime.value.status)) {
         runtime.value = {
           ...runtime.value,
@@ -438,7 +445,7 @@ export const appStore = {
 
   async disconnectDevice() {
     await monitor.disconnect();
-    monitorInfo = null;
+    monitorInfo.value = null;
 
     if (isSessionActive(runtime.value.status)) {
       runtime.value = {
@@ -457,11 +464,36 @@ export const appStore = {
     };
   },
 
-  setActualWorkDuration(value: number) {
+  async stopSessionAndDisconnect() {
+    stopTicking();
+    await releaseWakeLock();
+    await monitor.disconnect();
+    monitorInfo.value = null;
     runtime.value = {
       ...runtime.value,
-      actualWorkDurationSec: Math.max(1, value)
+      status: 'idle',
+      startedAt: null,
+      elapsedSec: 0,
+      countdownRemainingSec: 3,
+      isCompromised: false,
+      hrCoverageComplete: true,
+      samples: [],
+      bpm: null,
+      scrubElapsedSec: null
     };
+  },
+
+  setActualWorkDuration(value: number) {
+    const actualWorkDurationSec = Math.max(1, value);
+    runtime.value = {
+      ...runtime.value,
+      actualWorkDurationSec
+    };
+    actualWorkDurationByProfileId.value = {
+      ...actualWorkDurationByProfileId.value,
+      [selectedProfile.value.id]: actualWorkDurationSec
+    };
+    void persistSnapshot();
   },
 
   async startSession() {
@@ -726,7 +758,10 @@ export const appStore = {
     const snapshot: AppSnapshot = {
       profiles: profiles.value,
       sessions: sessions.value,
-      settings: { selectedProfileId: selectedProfileId.value }
+      settings: {
+        selectedProfileId: selectedProfileId.value,
+        actualWorkDurationByProfileId: actualWorkDurationByProfileId.value
+      }
     };
     const blob = new Blob([createExportPayload(snapshot)], { type: 'application/json' });
     const href = URL.createObjectURL(blob);
@@ -742,6 +777,7 @@ export const appStore = {
     profiles.value = payload.profiles;
     sessions.value = payload.sessions;
     selectedProfileId.value = payload.settings.selectedProfileId;
+    actualWorkDurationByProfileId.value = payload.settings.actualWorkDurationByProfileId ?? {};
     await replaceSnapshot(payload);
     this.beginEditingProfile(selectedProfileId.value);
     syncActualWorkDuration();

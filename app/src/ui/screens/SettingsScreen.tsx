@@ -1,5 +1,6 @@
 import { useRef, useState } from 'preact/hooks';
 import { appStore } from '../../application/store';
+import { RoundSettingsItem } from '../components/RoundSettingsItem';
 import { Stepper } from '../components/Stepper';
 
 export function SettingsScreen() {
@@ -131,84 +132,40 @@ export function SettingsScreen() {
             </div>
           </div>
           <div class="space-y-2">
-            <button
-              type="button"
-              class="w-full rounded-xl border border-[color:var(--line)] bg-white/30 px-4 py-3 text-left"
-              onClick={() => setExpandedKey(expandedKey === 'warmup' ? null : 'warmup')}
-            >
-              <div class="flex items-center justify-between">
-                <span>Warmup</span>
-                <span>{draft.warmupSec}s</span>
-              </div>
-            </button>
-            {expandedKey === 'warmup' ? (
-              referenced ? (
-                <ReadOnlyValue value={`${draft.warmupSec}s`} />
-              ) : (
-                <Stepper value={draft.warmupSec} onChange={(value) => appStore.updateDraftProfile({ warmupSec: value })} />
-              )
-            ) : null}
+            <RoundSettingsItem
+              label="Warmup"
+              valueSec={draft.warmupSec}
+              expanded={expandedKey === 'warmup'}
+              readOnly={referenced}
+              onToggle={() => setExpandedKey(expandedKey === 'warmup' ? null : 'warmup')}
+              onChange={(value) => appStore.updateDraftProfile({ warmupSec: value })}
+            />
             {draft.baseRestsSec.map((value, index) => {
               const key = `round-${index}`;
               const expanded = expandedKey === key;
               return (
-                <div key={key} class="space-y-2">
-                  <button
-                    type="button"
-                    class="w-full rounded-xl border border-[color:var(--line)] bg-white/30 px-4 py-3 text-left transition-colors duration-150"
-                    onClick={() => setExpandedKey(expanded ? null : key)}
-                  >
-                    <div class="flex items-center justify-between">
-                      <span>{`Round ${index + 1}`}</span>
-                      <span>{expanded ? '' : `${value}s`}</span>
-                    </div>
-                    {expanded ? (
-                      <div class="mt-3 flex gap-2">
-                        {!referenced ? (
-                          <>
-                            <button type="button" class="rounded-full border border-[color:var(--line)] px-3 py-1" onClick={(event) => { event.stopPropagation(); appStore.cloneDraftRecovery(index); }}>
-                              Clone
-                            </button>
-                            <button
-                              type="button"
-                              class="rounded-full border border-[color:var(--line)] px-3 py-1 disabled:text-[color:var(--muted)]"
-                              onClick={(event) => { event.stopPropagation(); appStore.deleteDraftRecovery(index); }}
-                              disabled={draft.baseRestsSec.length <= 1}
-                            >
-                              Delete
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </button>
-                  {expanded ? (
-                    referenced ? (
-                      <ReadOnlyValue value={`${value}s`} />
-                    ) : (
-                      <Stepper value={value} onChange={(next) => appStore.updateDraftRecovery(index, next)} />
-                    )
-                  ) : null}
-                </div>
+                <RoundSettingsItem
+                  key={key}
+                  label={`Round ${index + 1}`}
+                  valueSec={value}
+                  expanded={expanded}
+                  readOnly={referenced}
+                  deleteDisabled={draft.baseRestsSec.length <= 1}
+                  onToggle={() => setExpandedKey(expanded ? null : key)}
+                  onChange={(next) => appStore.updateDraftRecovery(index, next)}
+                  onClone={() => appStore.cloneDraftRecovery(index)}
+                  onDelete={() => appStore.deleteDraftRecovery(index)}
+                />
               );
             })}
-            <button
-              type="button"
-              class="w-full rounded-xl border border-[color:var(--line)] bg-white/30 px-4 py-3 text-left"
-              onClick={() => setExpandedKey(expandedKey === 'cooldown' ? null : 'cooldown')}
-            >
-              <div class="flex items-center justify-between">
-                <span>Cooldown</span>
-                <span>{draft.cooldownBaseSec}s</span>
-              </div>
-            </button>
-            {expandedKey === 'cooldown' ? (
-              referenced ? (
-                <ReadOnlyValue value={`${draft.cooldownBaseSec}s`} />
-              ) : (
-                <Stepper value={draft.cooldownBaseSec} onChange={(value) => appStore.updateDraftProfile({ cooldownBaseSec: value })} />
-              )
-            ) : null}
+            <RoundSettingsItem
+              label="Cooldown"
+              valueSec={draft.cooldownBaseSec}
+              expanded={expandedKey === 'cooldown'}
+              readOnly={referenced}
+              onToggle={() => setExpandedKey(expandedKey === 'cooldown' ? null : 'cooldown')}
+              onChange={(value) => appStore.updateDraftProfile({ cooldownBaseSec: value })}
+            />
           </div>
         </div>
       ) : null}

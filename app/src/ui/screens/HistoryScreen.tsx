@@ -89,6 +89,7 @@ export function HistoryScreen() {
       </div>
       <RecoveryHistogram
         rounds={appStore.historyComparison.value}
+        roundDurationsSec={session.plan.rounds.map((round) => round.nominalRoundDurationSec)}
         selectedRoundIndex={selectedRound?.roundIndex ?? null}
         showEmptyState
       />

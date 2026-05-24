@@ -3,6 +3,7 @@ import { STARTER_PROFILE } from '../../domain/shared/profile';
 
 export interface AppSettings {
   selectedProfileId: string;
+  actualWorkDurationByProfileId?: Record<string, number>;
 }
 
 export interface AppSnapshot {
@@ -18,7 +19,8 @@ const SNAPSHOT_KEY = 'snapshot';
 const DEFAULT_SNAPSHOT: AppSnapshot = {
   profiles: [STARTER_PROFILE],
   settings: {
-    selectedProfileId: STARTER_PROFILE.id
+    selectedProfileId: STARTER_PROFILE.id,
+    actualWorkDurationByProfileId: {}
   },
   sessions: []
 };
@@ -98,7 +100,16 @@ export async function loadSnapshot(): Promise<AppSnapshot> {
   return withStore('readonly', (store) => {
     return new Promise<AppSnapshot>((resolve, reject) => {
       const request = store.get(SNAPSHOT_KEY);
-      request.onsuccess = () => resolve((request.result as AppSnapshot | undefined) ?? DEFAULT_SNAPSHOT);
+      request.onsuccess = () => {
+        const snapshot = (request.result as AppSnapshot | undefined) ?? DEFAULT_SNAPSHOT;
+        resolve({
+          ...snapshot,
+          settings: {
+            ...snapshot.settings,
+            actualWorkDurationByProfileId: snapshot.settings.actualWorkDurationByProfileId ?? {}
+          }
+        });
+      };
       request.onerror = () => reject(request.error);
     });
   });

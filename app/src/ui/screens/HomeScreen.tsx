@@ -1,6 +1,11 @@
 import { appStore } from '../../application/store';
+import type { SessionRuntime } from '../../application/store';
+import type { ComparisonRound, SessionProfile, WorkoutPhaseSegment, WorkoutPlan } from '../../domain/shared/types';
 import { HeartGraph } from '../components/HeartGraph';
+import { Pulse } from '../components/Pulse';
 import { RecoveryHistogram } from '../components/RecoveryHistogram';
+import { RoundTiming } from '../components/RoundTiming';
+import { SessionDisplay } from '../components/SessionDisplay';
 import { WheelPicker } from '../components/WheelPicker';
 
 function formatPhaseSeconds(seconds: number) {
@@ -9,9 +14,7 @@ function formatPhaseSeconds(seconds: number) {
   return `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
-function getRoundDisplayLabel(): string {
-  const phase = appStore.currentPhase.value;
-
+function getRoundDisplayLabel(phase: WorkoutPhaseSegment | null): string {
   if (!phase || phase.kind === 'countdown' || phase.kind === 'warmup') {
     return 'Warm up';
   }
@@ -23,17 +26,70 @@ function getRoundDisplayLabel(): string {
   return phase.roundIndex ? `Round ${phase.roundIndex}` : '-';
 }
 
-function getPhaseEmphasisClass(): string {
-  const phase = appStore.currentPhase.value;
+function getSessionDisplayRoundName(phase: WorkoutPhaseSegment | null): string {
+  if (!phase || phase.kind === 'countdown' || phase.kind === 'warmup') {
+    return 'Warmup';
+  }
+
+  if (phase.kind === 'cooldown') {
+    return 'Cooldown';
+  }
+
+  if (!phase.roundIndex) {
+    return '-';
+  }
+
+  return `Round ${phase.roundIndex}: ${phase.kind === 'work' ? 'Work' : 'Rest'}`;
+}
+
+function getPhaseEmphasisClass(phase: WorkoutPhaseSegment | null): string {
   return phase?.kind === 'work' ? 'text-[color:var(--danger)]' : 'text-[color:var(--accent)]';
 }
 
-export function HomeScreen() {
-  const runtime = appStore.runtime.value;
-  const profile = appStore.selectedProfile.value;
-  const plan = appStore.currentPlan.value;
-  const phase = appStore.currentPhase.value;
+function getRoundEndElapsedSec(plan: WorkoutPlan): number[] {
+  return plan.rounds.map((round) => {
+    const restPhase = plan.phases.find((phase) => phase.kind === 'rest' && phase.roundIndex === round.roundIndex);
+    const workPhase = plan.phases.find((phase) => phase.kind === 'work' && phase.roundIndex === round.roundIndex);
 
+    return restPhase?.endSec ?? workPhase?.endSec ?? plan.totalDurationSec;
+  });
+}
+
+interface HomeScreenViewProps {
+  runtime: SessionRuntime;
+  profile: SessionProfile;
+  plan: WorkoutPlan;
+  phase: WorkoutPhaseSegment | null;
+  homeComparison: ComparisonRound[];
+  sensorName?: string | null;
+  batteryPercent?: number | null;
+  onConnectDevice: () => void;
+  onReconnectDevice: () => void;
+  onSetActualWorkDuration: (value: number) => void;
+  onStartSession: () => void;
+  onTogglePauseResume: () => void;
+  onStopSession: () => void;
+  onOpenCompletedSessionInHistory: () => void;
+  onSetScrubElapsedSec: (value: number) => void;
+}
+
+export function HomeScreenView({
+  runtime,
+  profile,
+  plan,
+  phase,
+  homeComparison,
+  sensorName,
+  batteryPercent,
+  onConnectDevice,
+  onReconnectDevice,
+  onSetActualWorkDuration,
+  onStartSession,
+  onTogglePauseResume,
+  onStopSession,
+  onOpenCompletedSessionInHistory,
+  onSetScrubElapsedSec
+}: HomeScreenViewProps) {
   const phaseRemaining =
     runtime.status === 'countdown'
       ? runtime.countdownRemainingSec
@@ -48,7 +104,7 @@ export function HomeScreen() {
       <section class="screen-nonscroll flex flex-col items-center justify-center">
         <button
           type="button"
-          onClick={() => appStore.connectDevice()}
+          onClick={onConnectDevice}
           class="rounded-full bg-[color:var(--accent)] px-10 py-5 text-2xl font-semibold text-[color:var(--accent-ink)]"
         >
           Connect
@@ -63,7 +119,15 @@ export function HomeScreen() {
         <div class="space-y-2 text-center">
           <div class="text-sm uppercase tracking-[0.18em] text-[color:var(--muted)]">Selected Profile</div>
           <div class="text-3xl font-semibold">{profile.name}</div>
-          <div class="text-5xl font-semibold">{runtime.bpm ?? '--'}</div>
+          <div class="flex items-center justify-center gap-4 text-5xl font-semibold">
+            <Pulse
+              key={runtime.bpmPulseAt}
+              active={runtime.bpm !== null}
+              beating={runtime.bpm !== null}
+              class="text-6xl leading-none"
+            />
+            <span>{runtime.bpm ?? '--'}</span>
+          </div>
         </div>
         <div class="rounded-[1.6rem] border border-[color:var(--line)] bg-[color:var(--panel)] p-5">
           <div class="mb-4 text-center text-sm uppercase tracking-[0.16em] text-[color:var(--muted)]">Actual Work Duration</div>
@@ -72,13 +136,13 @@ export function HomeScreen() {
               value={runtime.actualWorkDurationSec}
               min={Math.max(5, profile.workDurationSec - 20)}
               max={profile.workDurationSec + 10}
-              onChange={(value) => appStore.setActualWorkDuration(value)}
+              onChange={onSetActualWorkDuration}
             />
           </div>
         </div>
         <button
           type="button"
-          onClick={() => appStore.startSession()}
+          onClick={onStartSession}
           class="rounded-full bg-[color:var(--accent)] px-10 py-5 text-2xl font-semibold text-[color:var(--accent-ink)]"
         >
           Start
@@ -87,18 +151,62 @@ export function HomeScreen() {
     );
   }
 
+  if (runtime.status === 'countdown' || runtime.status === 'running' || runtime.status === 'paused' || runtime.status === 'completed') {
+    return (
+      <section class="screen-nonscroll">
+        <SessionDisplay
+          roundName={getSessionDisplayRoundName(phase)}
+          countdownSeconds={phaseRemaining}
+          remainingSeconds={remaining}
+          timingEmphasis={phase?.kind === 'work' ? 'work' : 'recovery'}
+          bpm={runtime.bpm}
+          pulseActive={runtime.bpm !== null}
+          pulseBeating={runtime.bpm !== null}
+          pulseBeatKey={runtime.bpmPulseAt}
+          sensorName={sensorName}
+          batteryPercent={batteryPercent}
+          playing={runtime.status !== 'paused'}
+          onBluetooth={onReconnectDevice}
+          onPlay={onTogglePauseResume}
+          onPause={onTogglePauseResume}
+          onStop={onStopSession}
+          samples={runtime.samples}
+          totalDurationSec={plan.totalDurationSec}
+          nominalPeakHeartrate={profile.nominalPeakHeartrate}
+          scrubElapsedSec={runtime.status === 'completed' ? runtime.scrubElapsedSec : null}
+          recoveryRounds={homeComparison}
+          roundDurationsSec={plan.rounds.map((round) => round.nominalRoundDurationSec)}
+          roundEndElapsedSec={getRoundEndElapsedSec(plan)}
+          sessionControllerVisible={false}
+          {...(runtime.status === 'completed' ? { onOpenHistory: onOpenCompletedSessionInHistory } : {})}
+        />
+        {runtime.status === 'completed' ? (
+          <input
+            aria-label="Session scrub position"
+            class="mt-3 w-full accent-[color:var(--accent)]"
+            type="range"
+            min="0"
+            max={String(plan.totalDurationSec)}
+            value={String(runtime.scrubElapsedSec ?? plan.totalDurationSec)}
+            onInput={(event) => onSetScrubElapsedSec(Number((event.currentTarget as HTMLInputElement).value))}
+          />
+        ) : null}
+      </section>
+    );
+  }
+
   return (
-    <section class="screen-nonscroll flex flex-col gap-3" onClick={() => (runtime.status === 'running' || runtime.status === 'paused') && appStore.togglePauseResume()}>
-      <div class="rounded-[1.8rem] border border-[color:var(--line)] bg-[color:var(--panel)] px-5 py-4 text-center">
-        <div class={`text-sm uppercase tracking-[0.18em] ${getPhaseEmphasisClass()}`}>
-          {phase?.label ?? 'Warmup'}
-        </div>
-        <div class="text-6xl font-semibold leading-none">{formatPhaseSeconds(phaseRemaining)}</div>
-      </div>
+    <section class="screen-nonscroll flex flex-col gap-3" onClick={() => (runtime.status === 'running' || runtime.status === 'paused') && onTogglePauseResume()}>
+      <RoundTiming
+        roundName={getRoundDisplayLabel(phase)}
+        countdownSeconds={phaseRemaining}
+        remainingSeconds={remaining}
+        emphasis={phase?.kind === 'work' ? 'work' : 'recovery'}
+      />
       <div class="grid grid-cols-3 gap-2 sm:gap-3">
         <div class="rounded-[1.4rem] border border-[color:var(--line)] bg-[color:var(--panel)] p-4 text-center">
           <div class="text-xs uppercase tracking-[0.16em] text-[color:var(--muted)]">Round</div>
-          <div class={`mt-2 text-xl font-semibold leading-tight ${getPhaseEmphasisClass()}`}>{getRoundDisplayLabel()}</div>
+          <div class={`mt-2 text-xl font-semibold leading-tight ${getPhaseEmphasisClass(phase)}`}>{getRoundDisplayLabel(phase)}</div>
         </div>
         <div class="rounded-[1.4rem] border border-[color:var(--line)] bg-[color:var(--panel)] p-4 text-center">
           <div class="text-xs uppercase tracking-[0.16em] text-[color:var(--muted)]">BPM</div>
@@ -115,27 +223,38 @@ export function HomeScreen() {
             samples={runtime.samples}
             totalDurationSec={plan.totalDurationSec}
             nominalPeakHeartrate={profile.nominalPeakHeartrate}
-            scrubElapsedSec={runtime.status === 'completed' ? runtime.scrubElapsedSec : null}
-            onClick={() => runtime.status === 'completed' && appStore.openCompletedSessionInHistory()}
+            scrubElapsedSec={null}
             heightClassName="h-32 sm:h-40"
           />
         </div>
         <RecoveryHistogram
-          rounds={appStore.homeComparison.value}
-          onClick={() => runtime.status === 'completed' && appStore.openCompletedSessionInHistory()}
+          rounds={homeComparison}
+          roundDurationsSec={plan.rounds.map((round) => round.nominalRoundDurationSec)}
           heightClassName="h-16 sm:h-20"
         />
       </div>
-      {runtime.status === 'completed' ? (
-        <input
-          class="w-full accent-[color:var(--accent)]"
-          type="range"
-          min="0"
-          max={String(plan.totalDurationSec)}
-          value={String(runtime.scrubElapsedSec ?? plan.totalDurationSec)}
-          onInput={(event) => appStore.setScrubElapsedSec(Number((event.currentTarget as HTMLInputElement).value))}
-        />
-      ) : null}
     </section>
+  );
+}
+
+export function HomeScreen() {
+  return (
+    <HomeScreenView
+      runtime={appStore.runtime.value}
+      profile={appStore.selectedProfile.value}
+      plan={appStore.currentPlan.value}
+      phase={appStore.currentPhase.value}
+      homeComparison={appStore.homeComparison.value}
+      sensorName={appStore.device.value?.name ?? null}
+      batteryPercent={appStore.device.value?.batteryPercent ?? null}
+      onConnectDevice={() => appStore.connectDevice()}
+      onReconnectDevice={() => appStore.reconnectDevice()}
+      onSetActualWorkDuration={(value) => appStore.setActualWorkDuration(value)}
+      onStartSession={() => appStore.startSession()}
+      onTogglePauseResume={() => appStore.togglePauseResume()}
+      onStopSession={() => appStore.stopSessionAndDisconnect()}
+      onOpenCompletedSessionInHistory={() => appStore.openCompletedSessionInHistory()}
+      onSetScrubElapsedSec={(value) => appStore.setScrubElapsedSec(value)}
+    />
   );
 }

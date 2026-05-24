@@ -14,7 +14,6 @@ export function TabBar() {
 
   const tabs = [
     { label: 'Home', path: '/', enabled: true },
-    { label: 'Devices', path: '/devices', enabled: appStore.canOpenDevices.value },
     { label: 'History', path: '/history', enabled: appStore.canOpenHistory.value },
     { label: 'Settings', path: '/settings', enabled: appStore.canOpenSettings.value }
   ];
@@ -38,7 +37,7 @@ export function TabBar() {
           </button>
         ))}
       </nav>
-      <nav class="mx-auto grid w-full max-w-screen-sm grid-cols-4 md:hidden">
+      <nav class="mx-auto grid w-full max-w-screen-sm grid-cols-3 md:hidden">
         {tabs.map((tab) => {
           const active = appStore.activeRoute.value === tab.path;
           return (

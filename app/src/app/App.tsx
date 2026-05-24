@@ -43,12 +43,14 @@ function Shell() {
         </div>
       </header>
       <main class="app-main min-h-0 flex flex-1 flex-col overflow-y-auto overflow-x-hidden">
-        <Router>
-          <Route path="/" component={HomeScreen} />
-          <Route path="/devices" component={DevicesScreen} />
-          <Route path="/history" component={HistoryScreen} />
-          <Route path="/settings" component={SettingsScreen} />
-        </Router>
+        <div class="min-h-0 flex flex-1 flex-col">
+          <Router>
+            <Route path="/" component={HomeScreen} />
+            <Route path="/devices" component={DevicesScreen} />
+            <Route path="/history" component={HistoryScreen} />
+            <Route path="/settings" component={SettingsScreen} />
+          </Router>
+        </div>
       </main>
       <div class="mobile-action-bar fixed inset-x-0 bottom-0 z-20 md:hidden">
         <TabBar />

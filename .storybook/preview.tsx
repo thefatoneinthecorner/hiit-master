@@ -1,6 +1,19 @@
-import type { Preview } from '@storybook/preact-vite'
+import type { Preview } from '@storybook/preact-vite';
 
 const preview: Preview = {
+  decorators: [
+    (Story) => {
+      document.documentElement.style.height = 'auto';
+      document.documentElement.style.minHeight = '100%';
+      document.documentElement.style.overflowY = 'auto';
+      document.body.style.height = 'auto';
+      document.body.style.minHeight = '100%';
+      document.body.style.overflowY = 'auto';
+      document.body.style.overflowX = 'hidden';
+
+      return <Story />;
+    }
+  ],
   parameters: {
     controls: {
       matchers: {

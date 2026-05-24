@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeSessionRounds } from '../domain/analysis/recovery';
-import { buildComparisonRounds, findPreviousComparableSession } from '../domain/comparison/comparison';
+import {
+  buildComparisonRounds,
+  buildReplayRecoveryAnalysis,
+  findPreviousComparableSession,
+  getReplayRecoveryVisibleRoundIndexes
+} from '../domain/comparison/comparison';
 import { STARTER_PROFILE, getDefaultActualWorkDurationSec } from '../domain/shared/profile';
 import type { SessionRecord } from '../domain/shared/types';
 import { createWorkoutPlan } from '../domain/workout/plan';
@@ -116,5 +121,236 @@ describe('domain rules', () => {
       { roundIndex: 1, currentDelta: 45, previousDelta: 35, diffDelta: 10 },
       { roundIndex: 2, currentDelta: 40, previousDelta: 42, diffDelta: -2 }
     ]);
+  });
+
+  it('does not reveal the first replay recovery bar before parity', () => {
+    const currentAnalysis = [
+      { roundIndex: 1, peak: 101, trough: 82, delta: 19, recoveryWindowStartSec: 329, recoveryWindowEndSec: 449 }
+    ];
+    const previousAnalysis = [
+      { roundIndex: 1, peak: 101, trough: 84, delta: 17, recoveryWindowStartSec: 328, recoveryWindowEndSec: 448 }
+    ];
+
+    const visibleRoundIndexes = getReplayRecoveryVisibleRoundIndexes({
+      elapsedSec: 430,
+      currentBpm: 86,
+      currentAnalysis,
+      previousAnalysis
+    });
+
+    expect(visibleRoundIndexes).toEqual([]);
+  });
+
+  it('reveals the first replay recovery bar at parity and renders the live zero delta', () => {
+    const currentAnalysis = [
+      { roundIndex: 1, peak: 101, trough: 82, delta: 19, recoveryWindowStartSec: 329, recoveryWindowEndSec: 449 }
+    ];
+    const previousAnalysis = [
+      { roundIndex: 1, peak: 101, trough: 84, delta: 17, recoveryWindowStartSec: 328, recoveryWindowEndSec: 448 }
+    ];
+
+    const visibleRoundIndexes = getReplayRecoveryVisibleRoundIndexes({
+      elapsedSec: 440,
+      currentBpm: 84,
+      currentAnalysis,
+      previousAnalysis
+    });
+    const replayAnalysis = buildReplayRecoveryAnalysis({
+      elapsedSec: 440,
+      currentBpm: 84,
+      currentAnalysis,
+      visibleRoundIndexes
+    });
+
+    expect(visibleRoundIndexes).toEqual([1]);
+    expect(buildComparisonRounds(replayAnalysis, previousAnalysis)).toEqual([
+      { roundIndex: 1, currentDelta: 17, previousDelta: 17, diffDelta: 0 }
+    ]);
+  });
+
+  it('updates a visible replay recovery bar with its live delta', () => {
+    const currentAnalysis = [
+      { roundIndex: 1, peak: 101, trough: 82, delta: 19, recoveryWindowStartSec: 329, recoveryWindowEndSec: 449 }
+    ];
+    const previousAnalysis = [
+      { roundIndex: 1, peak: 101, trough: 84, delta: 17, recoveryWindowStartSec: 328, recoveryWindowEndSec: 448 }
+    ];
+
+    const replayAnalysis = buildReplayRecoveryAnalysis({
+      elapsedSec: 445,
+      currentBpm: 82,
+      currentAnalysis,
+      visibleRoundIndexes: [1]
+    });
+
+    expect(buildComparisonRounds(replayAnalysis, previousAnalysis)).toEqual([
+      { roundIndex: 1, currentDelta: 19, previousDelta: 17, diffDelta: 2 }
+    ]);
+  });
+
+  it('uses the lowest observed bpm through the next work phase for live replay recovery', () => {
+    const currentAnalysis = [
+      { roundIndex: 1, peak: 101, trough: 82, delta: 19, recoveryWindowStartSec: 329, recoveryWindowEndSec: 449 }
+    ];
+    const previousAnalysis = [
+      { roundIndex: 1, peak: 101, trough: 84, delta: 17, recoveryWindowStartSec: 328, recoveryWindowEndSec: 448 }
+    ];
+
+    const replayAnalysis = buildReplayRecoveryAnalysis({
+      elapsedSec: 423,
+      currentBpm: 85,
+      currentAnalysis,
+      visibleRoundIndexes: [1],
+      samples: [
+        { elapsedSec: 329, bpm: 101 },
+        { elapsedSec: 420, bpm: 82 },
+        { elapsedSec: 423, bpm: 85 }
+      ]
+    });
+
+    expect(buildComparisonRounds(replayAnalysis, previousAnalysis)).toEqual([
+      { roundIndex: 1, currentDelta: 19, previousDelta: 17, diffDelta: 2 }
+    ]);
+  });
+
+  it('does not jump to an unobserved completed trough at the replay recovery window end', () => {
+    const currentAnalysis = [
+      { roundIndex: 2, peak: 110, trough: 94, delta: 16, recoveryWindowStartSec: 449, recoveryWindowEndSec: 554 }
+    ];
+    const previousAnalysis = [
+      { roundIndex: 2, peak: 115, trough: 95, delta: 20, recoveryWindowStartSec: 448, recoveryWindowEndSec: 553 }
+    ];
+
+    const replayAnalysis = buildReplayRecoveryAnalysis({
+      elapsedSec: 554,
+      currentBpm: 120,
+      currentAnalysis,
+      visibleRoundIndexes: [2],
+      samples: [
+        { elapsedSec: 449, bpm: 110 },
+        { elapsedSec: 525, bpm: 96 },
+        { elapsedSec: 554, bpm: 120 }
+      ]
+    });
+
+    expect(buildComparisonRounds(replayAnalysis, previousAnalysis)).toEqual([
+      { roundIndex: 2, currentDelta: 14, previousDelta: 20, diffDelta: -6 }
+    ]);
+  });
+
+  it('only applies scale-based replay recovery reveal after another bar is visible', () => {
+    const currentAnalysis = [
+      { roundIndex: 1, peak: 101, trough: 82, delta: 19, recoveryWindowStartSec: 329, recoveryWindowEndSec: 449 },
+      { roundIndex: 2, peak: 110, trough: 94, delta: 16, recoveryWindowStartSec: 449, recoveryWindowEndSec: 554 }
+    ];
+    const previousAnalysis = [
+      { roundIndex: 1, peak: 101, trough: 84, delta: 17, recoveryWindowStartSec: 328, recoveryWindowEndSec: 448 },
+      { roundIndex: 2, peak: 115, trough: 95, delta: 20, recoveryWindowStartSec: 448, recoveryWindowEndSec: 553 }
+    ];
+
+    expect(
+      getReplayRecoveryVisibleRoundIndexes({
+        elapsedSec: 500,
+        currentBpm: 92,
+        currentAnalysis: currentAnalysis.slice(1),
+        previousAnalysis
+      })
+    ).toEqual([]);
+    expect(
+      getReplayRecoveryVisibleRoundIndexes({
+        elapsedSec: 500,
+        currentBpm: 92,
+        currentAnalysis,
+        previousAnalysis,
+        visibleRoundIndexes: [1]
+      })
+    ).toEqual([1, 2]);
+    expect(
+      getReplayRecoveryVisibleRoundIndexes({
+        elapsedSec: 500,
+        currentBpm: 93,
+        currentAnalysis,
+        previousAnalysis,
+        visibleRoundIndexes: [1]
+      })
+    ).toEqual([1]);
+  });
+
+  it('uses the displayed live magnitude when revealing later replay recovery bars', () => {
+    const currentAnalysis = [
+      { roundIndex: 1, peak: 101, trough: 82, delta: 19, recoveryWindowStartSec: 329, recoveryWindowEndSec: 449 },
+      { roundIndex: 2, peak: 110, trough: 94, delta: 16, recoveryWindowStartSec: 449, recoveryWindowEndSec: 554 },
+      { roundIndex: 3, peak: 120, trough: 105, delta: 15, recoveryWindowStartSec: 554, recoveryWindowEndSec: 644 }
+    ];
+    const previousAnalysis = [
+      { roundIndex: 1, peak: 101, trough: 84, delta: 17, recoveryWindowStartSec: 328, recoveryWindowEndSec: 448 },
+      { roundIndex: 2, peak: 115, trough: 95, delta: 20, recoveryWindowStartSec: 448, recoveryWindowEndSec: 553 },
+      { roundIndex: 3, peak: 122, trough: 107, delta: 15, recoveryWindowStartSec: 553, recoveryWindowEndSec: 643 }
+    ];
+
+    expect(
+      getReplayRecoveryVisibleRoundIndexes({
+        elapsedSec: 600,
+        currentBpm: 111,
+        currentAnalysis,
+        previousAnalysis,
+        visibleRoundIndexes: [1, 2],
+        samples: [
+          { elapsedSec: 329, bpm: 101 },
+          { elapsedSec: 420, bpm: 82 },
+          { elapsedSec: 449, bpm: 110 },
+          { elapsedSec: 525, bpm: 96 },
+          { elapsedSec: 554, bpm: 120 },
+          { elapsedSec: 600, bpm: 111 }
+        ],
+        revealElapsedSec: [420, 525, 615]
+      })
+    ).toEqual([1, 2, 3]);
+  });
+
+  it('reveals replay recovery bars at the next work phase start even when still below threshold', () => {
+    const currentAnalysis = [
+      { roundIndex: 2, peak: 110, trough: 94, delta: 16, recoveryWindowStartSec: 449, recoveryWindowEndSec: 554 }
+    ];
+    const previousAnalysis = [
+      { roundIndex: 2, peak: 115, trough: 95, delta: 20, recoveryWindowStartSec: 448, recoveryWindowEndSec: 553 }
+    ];
+
+    expect(
+      getReplayRecoveryVisibleRoundIndexes({
+        elapsedSec: 524,
+        currentBpm: 96,
+        currentAnalysis,
+        previousAnalysis,
+        revealElapsedSec: [undefined, 525]
+      })
+    ).toEqual([]);
+    expect(
+      getReplayRecoveryVisibleRoundIndexes({
+        elapsedSec: 525,
+        currentBpm: 96,
+        currentAnalysis,
+        previousAnalysis,
+        revealElapsedSec: [undefined, 525]
+      })
+    ).toEqual([2]);
+  });
+
+  it('reveals replay recovery bars at the recovery window end as a fallback', () => {
+    const currentAnalysis = [
+      { roundIndex: 1, peak: 101, trough: 82, delta: 19, recoveryWindowStartSec: 329, recoveryWindowEndSec: 449 }
+    ];
+    const previousAnalysis = [
+      { roundIndex: 1, peak: 101, trough: 84, delta: 17, recoveryWindowStartSec: 328, recoveryWindowEndSec: 448 }
+    ];
+
+    expect(
+      getReplayRecoveryVisibleRoundIndexes({
+        elapsedSec: 449,
+        currentBpm: 86,
+        currentAnalysis,
+        previousAnalysis
+      })
+    ).toEqual([1]);
   });
 });
