@@ -1,7 +1,12 @@
 import { batch, computed, signal } from '@preact/signals';
 import { Capacitor } from '@capacitor/core';
 import { analyzeSessionRounds, getScrubPointData } from '../domain/analysis/recovery';
-import { buildComparisonRounds, findPreviousComparableSession } from '../domain/comparison/comparison';
+import {
+  buildComparisonRounds,
+  buildReplayRecoveryAnalysis,
+  findPreviousComparableSession,
+  getReplayRecoveryVisibleRoundIndexes
+} from '../domain/comparison/comparison';
 import { createSessionName, createUniqueProfileName, getDefaultActualWorkDurationSec } from '../domain/shared/profile';
 import type {
   ComparisonRound,
@@ -67,6 +72,7 @@ const profiles = signal<SessionProfile[]>([]);
 const sessions = signal<SessionRecord[]>([]);
 const selectedProfileId = signal<string>('');
 const historyIndex = signal(0);
+const trendIndex = signal(0);
 const initialized = signal(false);
 const activeRoute = signal('/');
 const draftProfileId = signal<string | null>(null);
@@ -168,6 +174,29 @@ async function persistSnapshot(): Promise<void> {
   });
 }
 
+function hasSameAnalysis(left: RoundAnalysis[], right: RoundAnalysis[]): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function reanalyzeSessions(savedSessions: SessionRecord[]): { sessions: SessionRecord[]; changed: boolean } {
+  let changed = false;
+  const reanalyzedSessions = savedSessions.map((session) => {
+    const analysis = analyzeSessionRounds(session.plan, session.samples);
+
+    if (hasSameAnalysis(session.analysis, analysis)) {
+      return session;
+    }
+
+    changed = true;
+    return {
+      ...session,
+      analysis
+    };
+  });
+
+  return { sessions: reanalyzedSessions, changed };
+}
+
 function getSelectedProfile(): SessionProfile {
   return profiles.value.find((profile) => profile.id === selectedProfileId.value) ?? profiles.value[0]!;
 }
@@ -202,11 +231,41 @@ const previousComparisonSession = computed(() =>
     sessions.value
   )
 );
+const shouldWarnNoComparableSession = computed(() => sessions.value.length > 0 && previousComparisonSession.value === null);
 
 const currentAnalysis = computed<RoundAnalysis[]>(() => analyzeSessionRounds(currentPlan.value, runtime.value.samples));
 const comparisonRounds = computed<ComparisonRound[]>(() =>
   buildComparisonRounds(currentAnalysis.value, previousComparisonSession.value?.analysis ?? null)
 );
+const homeComparison = computed<ComparisonRound[]>(() => {
+  const currentRuntime = runtime.value;
+  const previousAnalysis = previousComparisonSession.value?.analysis ?? null;
+
+  if (currentRuntime.status === 'completed') {
+    return comparisonRounds.value;
+  }
+
+  if (!['running', 'paused'].includes(currentRuntime.status)) {
+    return [];
+  }
+
+  const visibleRoundIndexes = getReplayRecoveryVisibleRoundIndexes({
+    elapsedSec: currentRuntime.elapsedSec,
+    currentBpm: currentRuntime.bpm,
+    currentAnalysis: currentAnalysis.value,
+    previousAnalysis,
+    samples: currentRuntime.samples
+  });
+  const liveAnalysis = buildReplayRecoveryAnalysis({
+    elapsedSec: currentRuntime.elapsedSec,
+    currentBpm: currentRuntime.bpm,
+    currentAnalysis: currentAnalysis.value,
+    visibleRoundIndexes,
+    samples: currentRuntime.samples
+  });
+
+  return buildComparisonRounds(liveAnalysis, previousAnalysis);
+});
 const completedSessions = computed(() =>
   sessions.value
     .filter((session) => session.status === 'completed')
@@ -349,14 +408,19 @@ async function initialize(): Promise<void> {
   }
 
   const snapshot = await loadSnapshot();
+  const reanalyzed = reanalyzeSessions(snapshot.sessions);
   batch(() => {
     profiles.value = snapshot.profiles;
-    sessions.value = snapshot.sessions;
+    sessions.value = reanalyzed.sessions;
     selectedProfileId.value = snapshot.settings.selectedProfileId || snapshot.profiles[0]?.id || '';
     actualWorkDurationByProfileId.value = snapshot.settings.actualWorkDurationByProfileId ?? {};
     historyIndex.value = 0;
+    trendIndex.value = 0;
     initialized.value = true;
   });
+  if (reanalyzed.changed) {
+    await persistSnapshot();
+  }
   syncActualWorkDuration();
 }
 
@@ -380,6 +444,8 @@ export const appStore = {
   completedSessions,
   historySession,
   historyComparison,
+  trendIndex,
+  shouldWarnNoComparableSession,
   profileDraft,
   draftProfileId,
   pendingProfileSwitchId,
@@ -389,9 +455,10 @@ export const appStore = {
   device: computed(() => monitorInfo.value),
   isHomeSessionVisible: computed(() => !['idle', 'connecting_hr', 'ready'].includes(runtime.value.status)),
   canOpenDevices: computed(() => monitor.isConnected() || isSessionActive(runtime.value.status)),
+  canOpenTrend: computed(() => !isSessionActive(runtime.value.status) && !isCountdownActive(runtime.value.status) && sessions.value.length > 0),
   canOpenHistory: computed(() => !isSessionActive(runtime.value.status) && !isCountdownActive(runtime.value.status) && completedSessions.value.length > 0),
   canOpenSettings: computed(() => !isSessionActive(runtime.value.status) && !isCountdownActive(runtime.value.status)),
-  homeComparison: comparisonRounds,
+  homeComparison,
   currentSessionScrub: computed(() => getScrubPointData(runtime.value.samples, runtime.value.scrubElapsedSec ?? runtime.value.elapsedSec)),
   historyScrub: computed(() => {
     const session = historySession.value;
@@ -538,6 +605,10 @@ export const appStore = {
       ...runtime.value,
       scrubElapsedSec: value
     };
+  },
+
+  setTrendIndex(index: number) {
+    trendIndex.value = Math.max(0, index);
   },
 
   openCompletedSessionInHistory(sessionId?: string) {
@@ -774,11 +845,16 @@ export const appStore = {
 
   async importBackup(file: File) {
     const payload = parseImportPayload(await file.text());
+    const reanalyzed = reanalyzeSessions(payload.sessions);
+    const normalizedPayload = {
+      ...payload,
+      sessions: reanalyzed.sessions
+    };
     profiles.value = payload.profiles;
-    sessions.value = payload.sessions;
+    sessions.value = normalizedPayload.sessions;
     selectedProfileId.value = payload.settings.selectedProfileId;
     actualWorkDurationByProfileId.value = payload.settings.actualWorkDurationByProfileId ?? {};
-    await replaceSnapshot(payload);
+    await replaceSnapshot(normalizedPayload);
     this.beginEditingProfile(selectedProfileId.value);
     syncActualWorkDuration();
   }

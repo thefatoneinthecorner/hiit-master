@@ -40,6 +40,7 @@ Required behavior:
 Required behavior:
 
 - The last work interval requires a special trough/recovery rule because no subsequent work interval exists.
+- Peak detection still accounts for physiological lag and includes the cooldown phase.
 - This behavior must be specified and tested explicitly in the rebuild.
 
 Design intent:

@@ -179,7 +179,7 @@ Responsibilities:
 
 Responsibilities:
 
-- derive per-round peak from work windows
+- derive per-round peak from lag-aware work-plus-recovery windows
 - derive per-round trough from following rest windows
 - skip missing values correctly
 - preserve deterministic recomputation
@@ -328,6 +328,7 @@ Rules:
 The comparison metric is fixed in version 1:
 
 - per-round delta = `peak - trough`
+- peak detection always accounts for physiological lag by extending through the round's recovery phase
 - comparison diff = `currentDelta - previousDelta`
 
 The visual encoding is intentionally not fixed in architecture.

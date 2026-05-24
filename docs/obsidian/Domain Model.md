@@ -15,6 +15,8 @@ Required persisted session data includes at least:
 - `profileName`
 - the actual work duration used for that session
 
+Persisted interval stats are derived data. On startup and backup import, the app must be able to recompute them from the persisted workout plan and heart-rate samples so analysis-rule changes, including lag-aware peak detection, repair existing local data.
+
 ## Session profile
 
 A saved timing profile that defines the workout plan.

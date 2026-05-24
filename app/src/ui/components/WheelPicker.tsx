@@ -5,15 +5,17 @@ interface WheelPickerProps {
   min: number;
   max: number;
   onChange: (next: number) => void;
+  labels?: string[];
 }
 
 const ITEM_HEIGHT_PX = 48;
 
-export function WheelPicker({ value, min, max, onChange }: WheelPickerProps) {
+export function WheelPicker({ value, min, max, onChange, labels }: WheelPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollFrameRef = useRef<number | null>(null);
   const skipAutoCenterRef = useRef(false);
   const values = Array.from({ length: max - min + 1 }, (_, index) => min + index);
+  const hasLabels = labels !== undefined;
 
   useEffect(() => {
     if (skipAutoCenterRef.current) {
@@ -73,7 +75,7 @@ export function WheelPicker({ value, min, max, onChange }: WheelPickerProps) {
   };
 
   return (
-    <div class="relative mx-auto h-44 w-28 overflow-hidden rounded-[1.6rem] border border-[color:var(--line)] bg-[color:var(--panel)]">
+    <div class={`relative mx-auto h-44 overflow-hidden rounded-[1.6rem] border border-[color:var(--line)] bg-[color:var(--panel)] ${hasLabels ? 'w-56' : 'w-28'}`}>
       <div class="pointer-events-none absolute inset-x-2 top-1/2 h-12 -translate-y-1/2 rounded-xl border border-[color:var(--line)] bg-white/25" />
       <div
         ref={containerRef}
@@ -81,17 +83,21 @@ export function WheelPicker({ value, min, max, onChange }: WheelPickerProps) {
         onScroll={handleScroll}
         class="h-full snap-y overflow-y-auto py-16"
       >
-        {values.map((item) => (
-          <button
-            key={item}
-            data-value={item}
-            type="button"
-            onClick={() => commitValue(item, 'click')}
-            class={`block h-12 w-full snap-center text-center text-2xl font-semibold ${item === value ? 'text-[color:var(--ink)]' : 'text-[color:var(--muted)]'}`}
-          >
-            {item}
-          </button>
-        ))}
+        {values.map((item) => {
+          const label = labels?.[item - min] ?? String(item);
+
+          return (
+            <button
+              key={item}
+              data-value={item}
+              type="button"
+              onClick={() => commitValue(item, 'click')}
+              class={`block h-12 w-full snap-center truncate px-3 text-center font-semibold ${hasLabels ? 'text-lg' : 'text-2xl'} ${item === value ? 'text-[color:var(--ink)]' : 'text-[color:var(--muted)]'}`}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

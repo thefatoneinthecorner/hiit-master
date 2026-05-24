@@ -13,6 +13,7 @@ type HomeScreenArgs = {
   runtime: SessionRuntime;
   phase: WorkoutPhaseSegment | null;
   homeComparison: ComparisonRound[];
+  showNoComparableSessionWarning: boolean;
   sensorName?: string | null;
   batteryPercent?: number | null;
   onConnectDevice: () => void;
@@ -67,6 +68,7 @@ function renderHomeScreen(args: HomeScreenArgs) {
         plan={plan}
         phase={args.phase}
         homeComparison={args.homeComparison}
+        showNoComparableSessionWarning={args.showNoComparableSessionWarning}
         sensorName={args.sensorName}
         batteryPercent={args.batteryPercent}
         onConnectDevice={args.onConnectDevice}
@@ -98,6 +100,7 @@ const meta = {
     runtime: baseRuntime,
     phase: getPhaseAtElapsedSec(plan, baseRuntime.elapsedSec),
     homeComparison,
+    showNoComparableSessionWarning: false,
     sensorName: 'Polar H10',
     batteryPercent: 82,
     onConnectDevice: fn(),
@@ -127,6 +130,7 @@ export const Idle: Story = {
     },
     phase: null,
     homeComparison: [],
+    showNoComparableSessionWarning: false,
   },
   play: async ({ args, canvas }) => {
     await userEvent.click(canvas.getByRole('button', { name: 'Connect' }));
@@ -147,6 +151,7 @@ export const Ready: Story = {
     },
     phase: null,
     homeComparison: [],
+    showNoComparableSessionWarning: false,
   },
   play: async ({ args, canvas }) => {
     await expect(canvas.getByText('Selected Profile')).toBeVisible();
@@ -156,6 +161,27 @@ export const Ready: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Start' }));
 
     await expect(args.onStartSession).toHaveBeenCalledTimes(1);
+  },
+};
+
+export const ReadyWithoutComparableSession: Story = {
+  args: {
+    runtime: {
+      ...baseRuntime,
+      status: 'ready',
+      startedAt: null,
+      elapsedSec: 0,
+      samples: [],
+      bpm: 72,
+    },
+    phase: null,
+    homeComparison: [],
+    showNoComparableSessionWarning: true,
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText('Selected Profile')).toBeVisible();
+    await expect(canvas.getByRole('status')).toHaveTextContent('No comparable previous session for this profile');
+    await expect(canvas.getByRole('button', { name: 'Start' })).toBeVisible();
   },
 };
 

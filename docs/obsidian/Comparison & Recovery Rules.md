@@ -32,7 +32,7 @@ Required behavior:
 
 - A `Round` is defined as a work phase followed by its recovery phase.
 - For each round, compute:
-  - `Peak`: highest heart rate recorded during that round
+  - `Peak`: highest heart rate recorded during that round, including heart-rate lag into the round's recovery phase
   - `Trough`: lowest heart rate recorded in that round's "recovery window" (see below)
   - `Delta`: `Peak - Trough`
 - Live comparison uses:
@@ -44,6 +44,11 @@ Required behavior:
 
 Required behavior:
 
+- Peak detection must always account for physiological lag:
+  - for every round, the peak window starts at the start of that round's work phase
+  - the peak window continues through the end of that round's recovery phase
+  - for the final round, the peak window continues through the cooldown phase
+  - `Peak` is the highest heart rate recorded anywhere in that lag-aware peak window
 - For every non-final round:
   - the recovery window starts at the start of that round's recovery phase
   - the recovery window includes the following round's work phase

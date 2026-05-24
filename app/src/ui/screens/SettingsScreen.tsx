@@ -20,7 +20,7 @@ export function SettingsScreen() {
   );
 
   return (
-    <section class="space-y-4 pb-8">
+    <section class="shrink-0 space-y-4 pb-8">
       <div class="flex gap-3">
         <button type="button" class="rounded-full bg-[color:var(--accent)] px-5 py-3 font-semibold text-[color:var(--accent-ink)]" onClick={() => fileInputRef.current?.click()}>
           Import

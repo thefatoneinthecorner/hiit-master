@@ -1,9 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/preact-vite';
-import { expect, fn, userEvent } from 'storybook/test';
+import { useState } from 'preact/hooks';
+import { expect, fireEvent, fn, userEvent } from 'storybook/test';
 
 import '../app/src/styles.css';
-import type { HeartRateSample } from '../app/src/domain/shared/types';
+import type { HeartRateSample, RoundAnalysis, WorkoutPhaseSegment } from '../app/src/domain/shared/types';
 import { HeartGraph } from '../app/src/ui/components/HeartGraph';
+import hiitMasterBackup from '../hiit-master-backup.json';
 import heartGraphSpec from '../specs/ui/components/HeartGraph.spec.md?raw';
 
 type HeartGraphArgs = {
@@ -16,8 +18,21 @@ type HeartGraphArgs = {
   lineThickness?: number;
   fillWidth?: boolean;
   timeScale?: 'samples' | 'duration';
+  crosshairScrubber?: boolean;
+  phases?: WorkoutPhaseSegment[];
+  analysis?: RoundAnalysis[];
+  previousAnalysis?: RoundAnalysis[];
+  onScrubElapsedSecChange?: (elapsedSec: number) => void;
   clickLabel?: string;
   onClick?: () => void;
+};
+
+type BackupSession = {
+  name: string;
+  plan?: { totalDurationSec?: number; phases?: WorkoutPhaseSegment[] };
+  profileSnapshot?: { nominalPeakHeartrate?: number };
+  samples?: HeartRateSample[];
+  analysis?: RoundAnalysis[];
 };
 
 const sessionSamples: HeartRateSample[] = [
@@ -46,6 +61,17 @@ const completedSessionSamples: HeartRateSample[] = [
   { elapsedSec: 360, bpm: 103 },
 ];
 
+const backupSessions = (hiitMasterBackup as { sessions: BackupSession[] }).sessions;
+const representativeBackupSession =
+  backupSessions.find((session) => session.name === '27 May 2026, 11:34') ?? backupSessions.find((session) => (session.samples?.length ?? 0) > 1000) ?? backupSessions[0];
+const representativeBackupSamples = representativeBackupSession?.samples ?? [];
+const representativeBackupTotalDurationSec = representativeBackupSession?.plan?.totalDurationSec ?? 1415;
+const representativeBackupPeakHeartrate = representativeBackupSession?.profileSnapshot?.nominalPeakHeartrate ?? 160;
+const representativeBackupPhases = representativeBackupSession?.plan?.phases ?? [];
+const representativeBackupAnalysis = representativeBackupSession?.analysis ?? [];
+const representativePreviousAnalysis =
+  backupSessions.find((session) => session.name === '24 May 2026, 12:43')?.analysis ?? [];
+
 const meta = {
   title: 'Components/HeartGraph',
   component: HeartGraph,
@@ -73,6 +99,11 @@ const meta = {
     lineThickness: 1.8,
     fillWidth: true,
     timeScale: 'samples',
+    crosshairScrubber: false,
+    phases: undefined,
+    analysis: undefined,
+    previousAnalysis: undefined,
+    onScrubElapsedSecChange: undefined,
   },
   argTypes: {
     labelledAxes: { control: 'boolean' },
@@ -83,6 +114,11 @@ const meta = {
     lineThickness: { control: { type: 'number', min: 0.5, max: 6, step: 0.1 } },
     fillWidth: { control: 'boolean' },
     timeScale: { control: 'radio', options: ['samples', 'duration'] },
+    crosshairScrubber: { control: 'boolean' },
+    phases: { table: { disable: true } },
+    analysis: { table: { disable: true } },
+    previousAnalysis: { table: { disable: true } },
+    onScrubElapsedSecChange: { table: { disable: true } },
     clickLabel: { control: 'text' },
     onClick: { table: { disable: true } },
   },
@@ -189,6 +225,105 @@ export const Scrubber: Story = {
     await expect(scrubMarker).toBeInTheDocument();
     await expect(scrubMarker).toHaveAttribute('x1', '50');
     await expect(scrubMarker).toHaveAttribute('x2', '50');
+  },
+};
+
+export const BackupSessionCrosshair: Story = {
+  args: {
+    samples: representativeBackupSamples,
+    totalDurationSec: representativeBackupTotalDurationSec,
+    nominalPeakHeartrate: representativeBackupPeakHeartrate,
+    phases: representativeBackupPhases,
+    analysis: representativeBackupAnalysis,
+    previousAnalysis: representativePreviousAnalysis,
+    labelledAxes: true,
+    scrubElapsedSec: 844,
+    timeScale: 'duration',
+    crosshairScrubber: true,
+    heightClassName: 'h-56',
+    onScrubElapsedSecChange: fn(),
+  },
+  render: (args) => {
+    const [scrubElapsedSec, setScrubElapsedSec] = useState(args.scrubElapsedSec ?? 0);
+
+    return (
+      <div class="w-full p-6">
+        <HeartGraph
+          {...args}
+          scrubElapsedSec={scrubElapsedSec}
+          onScrubElapsedSecChange={(elapsedSec) => {
+            setScrubElapsedSec(elapsedSec);
+            args.onScrubElapsedSecChange?.(elapsedSec);
+          }}
+        />
+      </div>
+    );
+  },
+  play: async ({ args, canvas, canvasElement }) => {
+    const graph = canvasElement.querySelector('.graph-surface') as HTMLDivElement | null;
+    const scrubMarker = canvasElement.querySelector('[data-testid="heart-graph-scrubber"]');
+    const horizontalScrubMarker = canvasElement.querySelector('[data-testid="heart-graph-scrubber-horizontal"]');
+    const phaseInterval = canvasElement.querySelector('[data-testid="heart-graph-phase-interval"]');
+    const minMarker = canvasElement.querySelector('[data-testid="heart-graph-min-marker"]');
+    const maxMarker = canvasElement.querySelector('[data-testid="heart-graph-max-marker"]');
+    const bpmPill = canvasElement.querySelector('[data-testid="heart-graph-crosshair-bpm"]');
+    const timePill = canvasElement.querySelector('[data-testid="heart-graph-crosshair-time"]');
+
+    await expect(graph).toBeInTheDocument();
+    await expect(scrubMarker).toBeInTheDocument();
+    await expect(horizontalScrubMarker).toBeInTheDocument();
+    await expect(phaseInterval).toBeInTheDocument();
+    await expect(minMarker).toBeInTheDocument();
+    await expect(maxMarker).toBeInTheDocument();
+    await expect(bpmPill).toHaveTextContent('144 bpm');
+    await expect(bpmPill).toHaveClass(/z-20/);
+    await expect(timePill).toHaveTextContent('14:04 R7 W Δ12 ↑7');
+    await expect(timePill).toHaveClass(/z-20/);
+    await expect(canvas.queryByText('160')).not.toBeInTheDocument();
+    await expect(canvas.queryByText('50')).not.toBeInTheDocument();
+    await expect(canvas.queryByText('Time')).not.toBeInTheDocument();
+    await expect(canvasElement.querySelector('line[stroke-dasharray="1 2"]')).not.toBeInTheDocument();
+    await expect(Number(phaseInterval?.getAttribute('x'))).toBeCloseTo(57.6, 1);
+    await expect(Number(phaseInterval?.getAttribute('width'))).toBeCloseTo(2.1, 1);
+    await expect(Number(minMarker?.getAttribute('x1'))).toBeCloseTo(57.7, 1);
+    await expect(Number(maxMarker?.getAttribute('x1'))).toBeCloseTo(60.3, 1);
+
+    if (graph) {
+      const bounds = graph.getBoundingClientRect();
+
+      fireEvent.pointerDown(graph, { pointerId: 1, clientX: bounds.left + bounds.width * 0.3, buttons: 1 });
+      await expect(args.onScrubElapsedSecChange).toHaveBeenLastCalledWith(425);
+
+      fireEvent.pointerMove(graph, { pointerId: 1, clientX: bounds.left + bounds.width * 0.6, buttons: 1 });
+      await expect(args.onScrubElapsedSecChange).toHaveBeenLastCalledWith(849);
+      await expect(canvasElement.querySelector('[data-testid="heart-graph-crosshair-time"]')).toHaveTextContent('14:09 R7 R Δ11 ↑6');
+      await expect(Number(canvasElement.querySelector('[data-testid="heart-graph-phase-interval"]')?.getAttribute('x'))).toBeCloseTo(59.7, 1);
+      await expect(Number(canvasElement.querySelector('[data-testid="heart-graph-min-marker"]')?.getAttribute('x1'))).toBeCloseTo(62.2, 1);
+      await expect(Number(canvasElement.querySelector('[data-testid="heart-graph-max-marker"]')?.getAttribute('x1'))).toBeCloseTo(60.3, 1);
+
+      fireEvent.pointerUp(graph, { pointerId: 1, clientX: bounds.left + bounds.width * 0.6, buttons: 0 });
+      fireEvent.pointerMove(graph, { pointerId: 1, clientX: bounds.left + bounds.width * 0.1, buttons: 1 });
+      await expect(args.onScrubElapsedSecChange).toHaveBeenLastCalledWith(849);
+    }
+  },
+};
+
+export const NegativeDeltaDiff: Story = {
+  args: {
+    samples: representativeBackupSamples,
+    totalDurationSec: representativeBackupTotalDurationSec,
+    nominalPeakHeartrate: representativeBackupPeakHeartrate,
+    phases: representativeBackupPhases,
+    analysis: representativeBackupAnalysis,
+    previousAnalysis: [{ roundIndex: 7, peak: 0, trough: 0, delta: 15, recoveryWindowStartSec: 0, recoveryWindowEndSec: 0 }],
+    labelledAxes: true,
+    scrubElapsedSec: 844,
+    timeScale: 'duration',
+    crosshairScrubber: true,
+    heightClassName: 'h-56',
+  },
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.querySelector('[data-testid="heart-graph-crosshair-time"]')).toHaveTextContent('14:04 R7 W Δ12 ↓3');
   },
 };
 

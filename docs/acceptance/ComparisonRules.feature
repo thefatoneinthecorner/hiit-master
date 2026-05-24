@@ -18,6 +18,12 @@ Feature: Comparison and recovery rules
     When the round is analyzed
     Then Delta should equal Peak minus Trough
 
+  Scenario: Recovery peak detection accounts for physiological lag
+    Given a round's highest heart rate is recorded after the work timer finishes but before the recovery timer finishes
+    When the round is analyzed
+    Then Peak should use that delayed heart-rate maximum
+    And Delta should be calculated from that delayed Peak
+
   Scenario: Delta Diff compares current and previous delta for the same round
     Given the current session and the comparison session both have a delta for Round 4
     When diff delta is calculated
@@ -52,4 +58,3 @@ Feature: Comparison and recovery rules
     Then the user should be able to inspect current delta
     And the user should be able to inspect previous delta
     And the user should be able to inspect diff delta
-

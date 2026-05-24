@@ -6,6 +6,7 @@ import { DevicesScreen } from '../ui/screens/DevicesScreen';
 import { HistoryScreen } from '../ui/screens/HistoryScreen';
 import { HomeScreen } from '../ui/screens/HomeScreen';
 import { SettingsScreen } from '../ui/screens/SettingsScreen';
+import { TrendScreen } from '../ui/screens/TrendScreen';
 
 function Shell() {
   const location = useLocation();
@@ -18,6 +19,9 @@ function Shell() {
         location.route('/');
       }
       if (location.path === '/history' && !appStore.canOpenHistory.value) {
+        location.route('/');
+      }
+      if (location.path === '/trend' && !appStore.canOpenTrend.value) {
         location.route('/');
       }
       if (location.path === '/settings' && !appStore.canOpenSettings.value) {
@@ -36,17 +40,15 @@ function Shell() {
 
   return (
     <div class="safe-shell flex h-[100dvh] flex-col gap-4 overflow-hidden">
-      <header class="flex items-center justify-between gap-3">
-        <div class="text-2xl font-semibold">HIIT Master</div>
-        <div class="hidden md:block">
-          <TabBar />
-        </div>
+      <header class="hidden md:flex md:justify-end">
+        <TabBar />
       </header>
       <main class="app-main min-h-0 flex flex-1 flex-col overflow-y-auto overflow-x-hidden">
         <div class="min-h-0 flex flex-1 flex-col">
           <Router>
             <Route path="/" component={HomeScreen} />
             <Route path="/devices" component={DevicesScreen} />
+            <Route path="/trend" component={TrendScreen} />
             <Route path="/history" component={HistoryScreen} />
             <Route path="/settings" component={SettingsScreen} />
           </Router>

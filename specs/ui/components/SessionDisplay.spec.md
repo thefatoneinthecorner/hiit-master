@@ -43,6 +43,7 @@
 - In the latest-session replay story, Pause freezes replay advancement and Play resumes real-time advancement.
 - The controller visually disables Play while replay is playing, and disables Pause while replay is paused.
 - In the latest-session replay story, a recovery histogram bar always appears when the live comparison reaches zero/parity.
+- A round's peak calculation window is the round's work phase plus its following rest/cooldown phase, so delayed heart-rate peaks caused by physiological lag are included.
 - A round's recovery calculation window is the round's rest phase plus the following round's work phase, matching `RoundAnalysis.recoveryWindowStartSec` through `recoveryWindowEndSec`.
 - While that recovery calculation window is still in progress, a visible recovery histogram bar renders the live comparison delta from the lowest BPM observed so far in that calculation window, not from the current BPM.
 - During replay, visible recovery bars are calculated only from heart-rate samples that have appeared in the replay stream; they must not jump to an unobserved completed trough from final analysis data.

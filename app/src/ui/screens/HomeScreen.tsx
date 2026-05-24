@@ -61,6 +61,7 @@ interface HomeScreenViewProps {
   plan: WorkoutPlan;
   phase: WorkoutPhaseSegment | null;
   homeComparison: ComparisonRound[];
+  showNoComparableSessionWarning: boolean;
   sensorName?: string | null;
   batteryPercent?: number | null;
   onConnectDevice: () => void;
@@ -79,6 +80,7 @@ export function HomeScreenView({
   plan,
   phase,
   homeComparison,
+  showNoComparableSessionWarning,
   sensorName,
   batteryPercent,
   onConnectDevice,
@@ -140,6 +142,14 @@ export function HomeScreenView({
             />
           </div>
         </div>
+        {showNoComparableSessionWarning ? (
+          <div
+            role="status"
+            class="rounded-[1.4rem] border border-[color:var(--danger)] bg-[color:var(--danger-ink)] px-5 py-4 text-center text-base font-semibold text-[color:var(--danger)]"
+          >
+            No comparable previous session for this profile
+          </div>
+        ) : null}
         <button
           type="button"
           onClick={onStartSession}
@@ -245,6 +255,7 @@ export function HomeScreen() {
       plan={appStore.currentPlan.value}
       phase={appStore.currentPhase.value}
       homeComparison={appStore.homeComparison.value}
+      showNoComparableSessionWarning={appStore.shouldWarnNoComparableSession.value}
       sensorName={appStore.device.value?.name ?? null}
       batteryPercent={appStore.device.value?.batteryPercent ?? null}
       onConnectDevice={() => appStore.connectDevice()}

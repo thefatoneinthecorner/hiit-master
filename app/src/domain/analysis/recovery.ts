@@ -45,12 +45,11 @@ export function analyzeSessionRounds(plan: WorkoutPlan, samples: HeartRateSample
 
   for (const round of plan.rounds) {
     const workWindow = findPhaseWindow(plan, 'work', round.roundIndex);
-    const peak = maxBpmInWindow(samples, workWindow.startSec, workWindow.endSec);
-
     const isFinalRound = round.roundIndex === plan.rounds.length;
     const restWindow = isFinalRound
       ? findPhaseWindow(plan, 'cooldown', round.roundIndex)
       : findPhaseWindow(plan, 'rest', round.roundIndex);
+    const peak = maxBpmInWindow(samples, workWindow.startSec, restWindow.endSec);
 
     let recoveryWindowStartSec = restWindow.startSec;
     let recoveryWindowEndSec = restWindow.endSec;

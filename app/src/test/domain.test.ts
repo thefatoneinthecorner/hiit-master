@@ -58,6 +58,7 @@ describe('domain rules', () => {
     const samples = [
       { elapsedSec: 301, bpm: 130 },
       { elapsedSec: 320, bpm: 165 },
+      { elapsedSec: 335, bpm: 172 },
       { elapsedSec: 340, bpm: 120 },
       { elapsedSec: 425, bpm: 110 },
       { elapsedSec: 430, bpm: 170 },
@@ -67,7 +68,7 @@ describe('domain rules', () => {
 
     const analyses = analyzeSessionRounds(plan, samples);
 
-    expect(analyses[0]).toMatchObject({ peak: 165, trough: 110, delta: 55 });
+    expect(analyses[0]).toMatchObject({ peak: 172, trough: 110, delta: 62 });
     expect(analyses[1]?.delta).toBe(52);
   });
 

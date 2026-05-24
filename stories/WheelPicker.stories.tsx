@@ -4,11 +4,13 @@ import { useEffect, useState } from 'preact/hooks';
 
 import '../app/src/styles.css';
 import { WheelPicker } from '../app/src/ui/components/WheelPicker';
+import hiitMasterBackup from '../hiit-master-backup.json';
 
 type WheelPickerArgs = {
   value: number;
   min: number;
   max: number;
+  labels?: string[];
   onChange: (next: number) => void;
 };
 
@@ -24,6 +26,7 @@ function ControlledWheelPicker(args: WheelPickerArgs) {
       value={value}
       min={args.min}
       max={args.max}
+      labels={args.labels}
       onChange={(next) => {
         setValue(next);
         args.onChange(next);
@@ -40,6 +43,13 @@ function getOption(canvas: { getByRole: (role: string, options: { name: string }
   return canvas.getByRole('button', { name: String(value) });
 }
 
+const backupProfileNames = Array.from(
+  new Set([
+    ...(hiitMasterBackup as { profiles?: Array<{ name?: string }>; sessions?: Array<{ profileName?: string }> }).profiles?.map((profile) => profile.name) ?? [],
+    ...(hiitMasterBackup as { profiles?: Array<{ name?: string }>; sessions?: Array<{ profileName?: string }> }).sessions?.map((session) => session.profileName) ?? [],
+  ].filter((name): name is string => Boolean(name)))
+);
+
 const meta = {
   title: 'Components/WheelPicker',
   component: WheelPicker,
@@ -55,6 +65,7 @@ const meta = {
     value: { control: { type: 'number', min: 0 } },
     min: { control: { type: 'number', min: 0 } },
     max: { control: { type: 'number', min: 0 } },
+    labels: { table: { disable: true } },
   },
 } satisfies Meta<WheelPickerArgs>;
 
@@ -166,5 +177,22 @@ export const AutoCentersSelectedValue: Story = {
 
     await expect(getOption(canvas, 37)).toHaveClass(/text-\[color:var\(--ink\)\]/);
     await expect(args.onChange).not.toHaveBeenCalled();
+  },
+};
+
+export const BackupProfileNames: Story = {
+  args: {
+    value: backupProfileNames.indexOf('Full Timer 2'),
+    min: 0,
+    max: backupProfileNames.length - 1,
+    labels: backupProfileNames,
+    onChange: fn(),
+  },
+  play: async ({ args, canvas }) => {
+    clearSpy(args.onChange);
+
+    await expect(canvas.getByRole('button', { name: 'Full Timer 2' })).toHaveClass(/text-\[color:var\(--ink\)\]/);
+    await userEvent.click(canvas.getByRole('button', { name: 'My Profile 2' }));
+    await expect(args.onChange).toHaveBeenCalledWith(backupProfileNames.indexOf('My Profile 2'));
   },
 };
