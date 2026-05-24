@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "my-project-sb-mcp": {
+      "httpUrl": "http://localhost:6006/mcp"
+    }
+  }
+}

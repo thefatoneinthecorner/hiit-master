@@ -4,6 +4,14 @@
 
 Implement HIIT Master from the product specification.
 
+# Agent Instructions
+
+We are using Bun and a Spec-Driven Development (SDD) lifecycle.
+
+1. **Stories are the Specification:** Treat `.stories.tsx` files as immutable technical contracts. If an implementation file (`.tsx`) is missing or deleted, do not guess. Query the `my-project-sb-mcp` toolset to ingest the component's manifest and requirements.
+2. **Bottom-Up Implementation:** Generate the minimal code necessary to make all states defined in the Storybook file render correctly.
+3. **Verify via Sandbox:** After writing or regenerating code, execute the tests using the `run-story-tests` tool. If any edge cases fail, iterate and fix the code until the story run reports 100% success.
+
 ## Required reading order
 
 1. Start at [docs/START_HERE.md](docs/START_HERE.md).
