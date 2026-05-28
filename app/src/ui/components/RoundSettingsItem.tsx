@@ -9,6 +9,7 @@ interface RoundSettingsItemProps {
   valueSec: number;
   expanded: boolean;
   readOnly?: boolean;
+  bordered?: boolean;
   deleteDisabled?: boolean;
   onToggle: () => void;
   onChange: (value: number) => void;
@@ -32,6 +33,7 @@ export function RoundSettingsItem({
   valueSec,
   expanded,
   readOnly = false,
+  bordered = true,
   deleteDisabled = false,
   onToggle,
   onChange,
@@ -39,9 +41,23 @@ export function RoundSettingsItem({
   onDelete
 }: RoundSettingsItemProps) {
   const hasActions = !readOnly && (onClone || onDelete);
+  const borderClass = bordered ? 'border border-[color:var(--line)]' : 'border border-transparent';
+
+  function handlePanelClick(event: MouseEvent) {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('button')) {
+      return;
+    }
+
+    onToggle();
+  }
 
   return (
-    <div class="w-full rounded-xl border border-[color:var(--line)] bg-white/30 px-4 py-3 text-left transition-colors duration-150">
+    <div
+      class={`w-full rounded-xl ${borderClass} bg-white/30 px-4 py-3 text-left transition-colors duration-150`}
+      data-testid={`round-settings-item-${label.toLowerCase().replaceAll(' ', '-')}`}
+      onClick={handlePanelClick}
+    >
       <div class="flex items-center justify-between gap-3">
         <div class="flex min-w-0 items-center gap-2">
           <button type="button" class="min-w-0 text-left" onClick={onToggle}>

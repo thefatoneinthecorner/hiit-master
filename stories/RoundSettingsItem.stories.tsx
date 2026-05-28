@@ -10,6 +10,7 @@ type RoundSettingsItemArgs = {
   valueSec: number;
   expanded: boolean;
   readOnly?: boolean;
+  bordered?: boolean;
   deleteDisabled?: boolean;
   onToggle: () => void;
   onChange: (value: number) => void;
@@ -37,6 +38,7 @@ const meta = {
     valueSec: 90,
     expanded: false,
     readOnly: false,
+    bordered: true,
     deleteDisabled: false,
     onToggle: fn(),
     onChange: fn(),
@@ -46,6 +48,7 @@ const meta = {
     valueSec: { control: { type: 'number', min: 1 } },
     expanded: { control: 'boolean' },
     readOnly: { control: 'boolean' },
+    bordered: { control: 'boolean' },
     deleteDisabled: { control: 'boolean' },
   },
 } satisfies Meta<RoundSettingsItemArgs>;
@@ -68,9 +71,10 @@ export const CollapsedWarmup: Story = {
     await expect(canvas.getByRole('button', { name: '300s' })).toBeVisible();
     await expect(canvas.queryByRole('button', { name: 'Increase' })).not.toBeInTheDocument();
 
+    await userEvent.click(canvas.getByTestId('round-settings-item-warmup'));
     await userEvent.click(canvas.getByRole('button', { name: 'Warmup' }));
 
-    await expect(args.onToggle).toHaveBeenCalledTimes(1);
+    await expect(args.onToggle).toHaveBeenCalledTimes(2);
   },
 };
 
@@ -90,9 +94,10 @@ export const ExpandedEditableRound: Story = {
     await expect(canvas.getByRole('button', { name: 'Decrease' })).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Increase' })).toBeVisible();
 
+    await userEvent.click(canvas.getByTestId('round-settings-item-round-3'));
     await userEvent.click(canvas.getByRole('button', { name: 'Round 3' }));
 
-    await expect(args.onToggle).toHaveBeenCalledTimes(1);
+    await expect(args.onToggle).toHaveBeenCalledTimes(2);
   },
 };
 

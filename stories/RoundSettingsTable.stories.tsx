@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/preact-vite';
 import { expect, fn, userEvent } from 'storybook/test';
+import { useEffect, useState } from 'preact/hooks';
 
 import '../app/src/styles.css';
 import { RoundSettingsTable } from '../app/src/ui/components/RoundSettingsTable';
@@ -38,6 +39,51 @@ function clearSpy(spy: unknown) {
   (spy as { mockClear?: () => void } | undefined)?.mockClear?.();
 }
 
+function InteractiveRoundSettingsTable(args: RoundSettingsTableArgs) {
+  const [warmupSec, setWarmupSec] = useState(args.warmupSec);
+  const [baseRestsSec, setBaseRestsSec] = useState(args.baseRestsSec);
+  const [cooldownBaseSec, setCooldownBaseSec] = useState(args.cooldownBaseSec);
+
+  useEffect(() => {
+    setWarmupSec(args.warmupSec);
+    setBaseRestsSec(args.baseRestsSec);
+    setCooldownBaseSec(args.cooldownBaseSec);
+  }, [args.warmupSec, args.baseRestsSec, args.cooldownBaseSec]);
+
+  return (
+    <RoundSettingsTable
+      {...args}
+      warmupSec={warmupSec}
+      baseRestsSec={baseRestsSec}
+      cooldownBaseSec={cooldownBaseSec}
+      onWarmupChange={(value) => {
+        setWarmupSec(value);
+        args.onWarmupChange?.(value);
+      }}
+      onRecoveryChange={(index, value) => {
+        setBaseRestsSec((current) => current.map((item, itemIndex) => (itemIndex === index ? value : item)));
+        args.onRecoveryChange?.(index, value);
+      }}
+      onCooldownChange={(value) => {
+        setCooldownBaseSec(value);
+        args.onCooldownChange?.(value);
+      }}
+      onCloneRecovery={(index) => {
+        setBaseRestsSec((current) => {
+          const next = [...current];
+          next.splice(index + 1, 0, current[index] ?? 1);
+          return next;
+        });
+        args.onCloneRecovery?.(index);
+      }}
+      onDeleteRecovery={(index) => {
+        setBaseRestsSec((current) => (current.length <= 1 ? current : current.filter((_, itemIndex) => itemIndex !== index)));
+        args.onDeleteRecovery?.(index);
+      }}
+    />
+  );
+}
+
 const meta = {
   title: 'Components/RoundSettingsTable',
   component: RoundSettingsTable,
@@ -53,7 +99,7 @@ const meta = {
   render: (args) => (
     <div class="min-h-screen bg-[color:var(--canvas)] p-4" data-testid="round-settings-table-story-scroll">
       <div class="mx-auto max-w-2xl rounded-[1.6rem] border border-[color:var(--line)] bg-[color:var(--panel)] p-4">
-        <RoundSettingsTable {...args} />
+        <InteractiveRoundSettingsTable {...args} />
       </div>
     </div>
   ),
@@ -90,6 +136,7 @@ export const FullTimer2: Story = {
 
     await expect(canvas.getByTestId('round-settings-table-story-scroll')).toHaveClass(/min-h-screen/);
     await expect(canvas.getByTestId('round-settings-table')).toBeVisible();
+    await expect(canvas.getByTestId('round-settings-item-warmup')).toHaveClass(/border-transparent/);
     await expect(canvas.getByRole('button', { name: 'Warmup' })).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Round 1' })).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Round 13' })).toBeVisible();
@@ -111,6 +158,8 @@ export const FullTimer2: Story = {
     await expect(args.onRecoveryChange).toHaveBeenCalledWith(2, 61);
     await expect(args.onCloneRecovery).toHaveBeenCalledWith(2);
     await expect(args.onDeleteRecovery).not.toHaveBeenCalled();
+    await expect(canvas.getByText((_, element) => element?.classList.contains('min-w-16') === true && element.textContent === '61s')).toBeVisible();
+    await expect(canvas.getByRole('button', { name: 'Round 14' })).toBeVisible();
   },
 };
 

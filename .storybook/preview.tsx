@@ -16,6 +16,20 @@ const preview: Preview = {
         element.style.setProperty('overflow-y', 'visible', 'important');
       };
 
+      const makeViewportScrollable = (element: HTMLElement | null) => {
+        if (!element) {
+          return;
+        }
+
+        element.style.setProperty('box-sizing', 'border-box', 'important');
+        element.style.setProperty('min-height', '0', 'important');
+        element.style.setProperty('height', '100vh', 'important');
+        element.style.setProperty('max-height', 'none', 'important');
+        element.style.setProperty('overflow-x', 'hidden', 'important');
+        element.style.setProperty('overflow-y', 'auto', 'important');
+        element.style.setProperty('-webkit-overflow-scrolling', 'touch', 'important');
+      };
+
       document.documentElement.style.setProperty('min-height', '100%', 'important');
       document.documentElement.style.setProperty('height', 'auto', 'important');
       document.documentElement.style.setProperty('overflow-x', 'hidden', 'important');
@@ -24,16 +38,9 @@ const preview: Preview = {
       document.body.style.setProperty('height', 'auto', 'important');
       document.body.style.setProperty('overflow-x', 'hidden', 'important');
       document.body.style.setProperty('overflow-y', 'auto', 'important');
-      makePageScrollable(document.getElementById('storybook-root'));
+      makeViewportScrollable(document.getElementById('storybook-root'));
       makePageScrollable(document.getElementById('storybook-docs'));
-
-      const docsRoot = document.getElementById('storybook-docs');
-      if (docsRoot) {
-        docsRoot.style.setProperty('min-height', '0', 'important');
-        docsRoot.style.setProperty('height', '100vh', 'important');
-        docsRoot.style.setProperty('overflow-y', 'auto', 'important');
-        docsRoot.style.setProperty('-webkit-overflow-scrolling', 'touch', 'important');
-      }
+      makeViewportScrollable(document.getElementById('storybook-docs'));
 
       return <Story />;
     }
