@@ -25,7 +25,6 @@ const preview: Preview = {
       document.body.style.setProperty('overflow-x', 'hidden', 'important');
       document.body.style.setProperty('overflow-y', 'auto', 'important');
       makePageScrollable(document.getElementById('storybook-root'));
-      makePageScrollable(document.getElementById('storybook-root')?.firstElementChild as HTMLElement | null);
       makePageScrollable(document.getElementById('storybook-docs'));
 
       const docsRoot = document.getElementById('storybook-docs');
