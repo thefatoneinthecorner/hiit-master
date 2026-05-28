@@ -27,7 +27,7 @@ export function RoundSettingsTable({
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   return (
-    <div class="space-y-2" data-testid="round-settings-table">
+    <div data-testid="round-settings-table">
       <RoundSettingsItem
         label="Warmup"
         valueSec={warmupSec}

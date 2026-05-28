@@ -136,6 +136,7 @@ export const FullTimer2: Story = {
 
     await expect(canvas.getByTestId('round-settings-table-story-scroll')).toHaveClass(/min-h-screen/);
     await expect(canvas.getByTestId('round-settings-table')).toBeVisible();
+    await expect(canvas.getByTestId('round-settings-table')).not.toHaveClass(/space-y-/);
     await expect(canvas.getByTestId('round-settings-item-warmup')).not.toHaveClass(/rounded/);
     await expect(canvas.getByTestId('round-settings-item-warmup')).not.toHaveClass(/border/);
     await expect(canvas.getByTestId('round-settings-item-warmup')).toHaveClass(/py-1/);
