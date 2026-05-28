@@ -2,8 +2,13 @@ import { useRef } from 'preact/hooks';
 
 import { appStore } from '../../application/store';
 import type { SessionProfile } from '../../domain/shared/types';
+import { IconButton } from '../components/IconButton';
 import { RoundSettingsTable } from '../components/RoundSettingsTable';
+import { Stepper } from '../components/Stepper';
 import { WheelPicker } from '../components/WheelPicker';
+
+const copyIcon = new URL('../../../../assets/copy.svg', import.meta.url).href;
+const trashIcon = new URL('../../../../assets/trash.svg', import.meta.url).href;
 
 interface SettingsScreenViewProps {
   profiles: SessionProfile[];
@@ -12,6 +17,13 @@ interface SettingsScreenViewProps {
   onProfileIndexChange: (index: number) => void;
   onImportFile: (file: File) => void;
   onExport: () => void;
+  deleteProfileDisabled?: boolean;
+  onCloneProfile?: () => void;
+  onDeleteProfile?: () => void;
+  onNameChange?: (value: string) => void;
+  onWorkDurationChange?: (value: number) => void;
+  onNominalPeakHeartrateChange?: (value: number) => void;
+  onNotesChange?: (value: string) => void;
   onWarmupChange?: (value: number) => void;
   onRecoveryChange?: (index: number, value: number) => void;
   onCooldownChange?: (value: number) => void;
@@ -26,6 +38,13 @@ export function SettingsScreenView({
   onProfileIndexChange,
   onImportFile,
   onExport,
+  deleteProfileDisabled = false,
+  onCloneProfile,
+  onDeleteProfile,
+  onNameChange,
+  onWorkDurationChange,
+  onNominalPeakHeartrateChange,
+  onNotesChange,
   onWarmupChange,
   onRecoveryChange,
   onCooldownChange,
@@ -38,7 +57,7 @@ export function SettingsScreenView({
 
   return (
     <section class="shrink-0 space-y-4 pb-8">
-      <div class="flex gap-3">
+      <div class="mx-auto flex w-56 justify-between">
         <button type="button" class="rounded-full bg-[color:var(--accent)] px-5 py-3 font-semibold text-[color:var(--accent-ink)]" onClick={() => fileInputRef.current?.click()}>
           Import
         </button>
@@ -61,6 +80,7 @@ export function SettingsScreenView({
 
       {selectedProfile ? (
         <>
+          <div class="text-sm font-semibold uppercase tracking-wide text-[color:var(--muted)]">Selected Profile</div>
           <WheelPicker
             value={selectedIndex}
             min={0}
@@ -68,6 +88,20 @@ export function SettingsScreenView({
             labels={profiles.map((profile) => profile.name)}
             onChange={onProfileIndexChange}
           />
+          <div class="mx-auto flex w-56 justify-between">
+            <IconButton label="Clone Profile" iconSrc={copyIcon} onClick={onCloneProfile} />
+            <IconButton label="Delete Profile" iconSrc={trashIcon} variant="danger" disabled={profiles.length <= 1 || deleteProfileDisabled} onClick={onDeleteProfile} />
+          </div>
+          <div class="grid gap-3">
+            <label class="grid gap-1">
+              <span class="text-sm text-[color:var(--muted)]">Name</span>
+              <input
+                class="rounded-xl border border-[color:var(--line)] bg-white/50 px-3 py-2"
+                value={selectedProfile.name}
+                onInput={(event) => onNameChange?.((event.currentTarget as HTMLInputElement).value)}
+              />
+            </label>
+          </div>
           <RoundSettingsTable
             warmupSec={selectedProfile.warmupSec}
             baseRestsSec={selectedProfile.baseRestsSec}
@@ -79,9 +113,46 @@ export function SettingsScreenView({
             {...(onCloneRecovery ? { onCloneRecovery } : {})}
             {...(onDeleteRecovery ? { onDeleteRecovery } : {})}
           />
+          <div class="grid justify-items-center gap-4 md:grid-cols-2">
+            <div class="grid justify-items-center">
+              <div class="mb-2 text-center text-sm text-[color:var(--muted)]">Nominal Work Period</div>
+              {readOnly ? (
+                <ReadOnlyValue value={`${selectedProfile.workDurationSec}s`} />
+              ) : (
+                <Stepper value={selectedProfile.workDurationSec} onChange={(value) => onWorkDurationChange?.(value)} />
+              )}
+            </div>
+            <div class="grid justify-items-center">
+              <div class="mb-2 text-center text-sm text-[color:var(--muted)]">Nominal Peak Heartrate</div>
+              {readOnly ? (
+                <ReadOnlyValue value={`${selectedProfile.nominalPeakHeartrate} bpm`} />
+              ) : (
+                <Stepper value={selectedProfile.nominalPeakHeartrate} onChange={(value) => onNominalPeakHeartrateChange?.(value)} />
+              )}
+            </div>
+          </div>
+          <label class="grid gap-1">
+            <span class="text-sm text-[color:var(--muted)]">Notes</span>
+            <textarea
+              class="min-h-24 rounded-xl border border-[color:var(--line)] bg-white/50 px-3 py-2"
+              value={selectedProfile.notes}
+              onInput={(event) => onNotesChange?.((event.currentTarget as HTMLTextAreaElement).value)}
+            />
+          </label>
         </>
       ) : null}
     </section>
+  );
+}
+
+function ReadOnlyValue({ value }: { value: string }) {
+  return (
+    <div class="rounded-xl border border-[color:var(--line)] bg-white/30 px-4 py-3 text-sm">
+      <div class="flex items-center justify-between gap-3">
+        <span class="text-[color:var(--muted)]">Read only</span>
+        <span class="font-semibold text-[color:var(--ink)]">{value}</span>
+      </div>
+    </div>
   );
 }
 
@@ -96,6 +167,28 @@ export function SettingsScreen() {
     ? profiles.map((profile, index) => (index === selectedProfileIndex ? draft : profile))
     : profiles;
   const readOnly = draft ? appStore.hasProfileReferences(draft.id) : false;
+  const selectedDraftId = displayProfiles[selectedProfileIndex]?.id;
+  const deleteProfileDisabled = selectedDraftId ? appStore.hasProfileReferences(selectedDraftId) : true;
+
+  function updateLiveProfile(patch: Partial<SessionProfile>) {
+    appStore.updateDraftProfile(patch);
+    void appStore.saveDraftProfile();
+  }
+
+  function updateLiveRecovery(index: number, value: number) {
+    appStore.updateDraftRecovery(index, value);
+    void appStore.saveDraftProfile();
+  }
+
+  function cloneLiveRecovery(index: number) {
+    appStore.cloneDraftRecovery(index);
+    void appStore.saveDraftProfile();
+  }
+
+  function deleteLiveRecovery(index: number) {
+    appStore.deleteDraftRecovery(index);
+    void appStore.saveDraftProfile();
+  }
 
   return (
     <SettingsScreenView
@@ -112,11 +205,26 @@ export function SettingsScreen() {
         void appStore.importBackup(file);
       }}
       onExport={() => appStore.exportBackup()}
-      onWarmupChange={(value) => appStore.updateDraftProfile({ warmupSec: value })}
-      onRecoveryChange={(index, value) => appStore.updateDraftRecovery(index, value)}
-      onCooldownChange={(value) => appStore.updateDraftProfile({ cooldownBaseSec: value })}
-      onCloneRecovery={(index) => appStore.cloneDraftRecovery(index)}
-      onDeleteRecovery={(index) => appStore.deleteDraftRecovery(index)}
+      deleteProfileDisabled={deleteProfileDisabled}
+      onCloneProfile={() => {
+        if (selectedDraftId) {
+          appStore.copyProfile(selectedDraftId);
+        }
+      }}
+      onDeleteProfile={() => {
+        if (selectedDraftId) {
+          appStore.deleteProfile(selectedDraftId);
+        }
+      }}
+      onNameChange={(value) => updateLiveProfile({ name: value })}
+      onWorkDurationChange={(value) => updateLiveProfile({ workDurationSec: value })}
+      onNominalPeakHeartrateChange={(value) => updateLiveProfile({ nominalPeakHeartrate: value })}
+      onNotesChange={(value) => updateLiveProfile({ notes: value })}
+      onWarmupChange={(value) => updateLiveProfile({ warmupSec: value })}
+      onRecoveryChange={updateLiveRecovery}
+      onCooldownChange={(value) => updateLiveProfile({ cooldownBaseSec: value })}
+      onCloneRecovery={cloneLiveRecovery}
+      onDeleteRecovery={deleteLiveRecovery}
     />
   );
 }

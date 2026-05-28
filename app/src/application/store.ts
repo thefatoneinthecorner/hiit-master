@@ -807,7 +807,7 @@ export const appStore = {
   },
 
   deleteProfile(profileId: string) {
-    if (profiles.value.length <= 1) {
+    if (profiles.value.length <= 1 || this.hasProfileReferences(profileId)) {
       return;
     }
     profiles.value = profiles.value.filter((profile) => profile.id !== profileId);

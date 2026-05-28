@@ -24,6 +24,7 @@ function SettingsScreenStoryView(args: SettingsScreenArgs) {
   const [profiles, setProfiles] = useState(args.profiles);
   const [selectedProfileIndex, setSelectedProfileIndex] = useState(args.selectedProfileIndex);
   const selectedProfile = profiles[selectedProfileIndex];
+  const selectedProfileHasSessions = selectedProfileIndex < profiles.length - 1;
 
   return (
     <div class="min-h-screen bg-[color:var(--canvas)] p-4">
@@ -32,6 +33,40 @@ function SettingsScreenStoryView(args: SettingsScreenArgs) {
         profiles={profiles}
         selectedProfileIndex={selectedProfileIndex}
         onProfileIndexChange={setSelectedProfileIndex}
+        deleteProfileDisabled={selectedProfileHasSessions}
+        onCloneProfile={() => {
+          setProfiles((current) => {
+            const source = current[selectedProfileIndex];
+            if (!source) {
+              return current;
+            }
+            const copy = { ...source, id: `${source.id}-copy-${current.length}`, name: `${source.name} Copy` };
+            setSelectedProfileIndex(current.length);
+            return [...current, copy];
+          });
+        }}
+        onDeleteProfile={() => {
+          setProfiles((current) => {
+            if (current.length <= 1) {
+              return current;
+            }
+            const nextProfiles = current.filter((_, index) => index !== selectedProfileIndex);
+            setSelectedProfileIndex(Math.min(selectedProfileIndex, nextProfiles.length - 1));
+            return nextProfiles;
+          });
+        }}
+        onNameChange={(value) => {
+          setProfiles((current) => current.map((profile, index) => index === selectedProfileIndex ? { ...profile, name: value } : profile));
+        }}
+        onWorkDurationChange={(value) => {
+          setProfiles((current) => current.map((profile, index) => index === selectedProfileIndex ? { ...profile, workDurationSec: value } : profile));
+        }}
+        onNominalPeakHeartrateChange={(value) => {
+          setProfiles((current) => current.map((profile, index) => index === selectedProfileIndex ? { ...profile, nominalPeakHeartrate: value } : profile));
+        }}
+        onNotesChange={(value) => {
+          setProfiles((current) => current.map((profile, index) => index === selectedProfileIndex ? { ...profile, notes: value } : profile));
+        }}
         onWarmupChange={(value) => {
           setProfiles((current) => current.map((profile, index) => index === selectedProfileIndex ? { ...profile, warmupSec: value } : profile));
         }}
@@ -114,14 +149,28 @@ export const ProfilePickerAndRounds: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Export' }));
     await expect(args.onExport).toHaveBeenCalledTimes(1);
 
+    await expect(canvas.getByText('Selected Profile')).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Full Timer 2' })).toBeVisible();
+    await expect(canvas.getByRole('button', { name: 'Clone Profile' })).toBeVisible();
+    await expect(canvas.getByRole('button', { name: 'Delete Profile' })).toBeDisabled();
     await expect(canvas.getByTestId('settings-selected-profile-name')).toHaveTextContent('Full Timer 2');
+    await expect(canvas.getByLabelText('Name')).toHaveValue('Full Timer 2');
     await expect(canvas.getByRole('button', { name: 'Round 13' })).toBeVisible();
     await expect(canvas.getByRole('button', { name: '300s' })).toBeVisible();
+    await expect(canvas.getByText('Nominal Work Period')).toBeVisible();
+    await expect(canvas.getByText('Nominal Peak Heartrate')).toBeVisible();
+    await expect(canvas.getByLabelText('Notes')).toBeVisible();
+
+    await userEvent.click(canvas.getByRole('button', { name: 'Clone Profile' }));
+    await expect(canvas.getByTestId('settings-selected-profile-name')).toHaveTextContent('Full Timer 2 Copy');
+    await expect(canvas.getByLabelText('Name')).toHaveValue('Full Timer 2 Copy');
+    await expect(canvas.getByRole('button', { name: 'Delete Profile' })).toBeEnabled();
 
     await userEvent.click(canvas.getByRole('button', { name: 'My Profile 2' }));
 
     await expect(canvas.getByTestId('settings-selected-profile-name')).toHaveTextContent('My Profile 2');
+    await expect(canvas.getByLabelText('Name')).toHaveValue('My Profile 2');
+    await expect(canvas.getByRole('button', { name: 'Delete Profile' })).toBeDisabled();
     await expect(canvas.getAllByRole('button', { name: '60s' }).length).toBeGreaterThan(0);
     await expect(canvas.getByRole('button', { name: 'Round 12' })).toBeVisible();
     await expect(canvas.queryByRole('button', { name: 'Round 13' })).not.toBeInTheDocument();
