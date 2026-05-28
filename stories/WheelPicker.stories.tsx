@@ -125,6 +125,7 @@ export const ScrollSelectsNearestValue: Story = {
     clearSpy(args.onChange);
     const scroller = canvas.getByTestId('wheel-picker-scroll') as HTMLDivElement;
 
+    fireEvent.wheel(scroller);
     scroller.scrollTop = 144;
     fireEvent.scroll(scroller);
 
@@ -143,6 +144,7 @@ export const ScrollClampsToMaximum: Story = {
     clearSpy(args.onChange);
     const scroller = canvas.getByTestId('wheel-picker-scroll') as HTMLDivElement;
 
+    fireEvent.wheel(scroller);
     scroller.scrollTop = 9999;
     fireEvent.scroll(scroller);
 

@@ -23,7 +23,7 @@
 ## Navigation
 
 - The app route is `/trend`.
-- The TabBar displays `Trends` between `Home` and `History`.
+- The TabBar displays `Trends` between `Home` and `Settings`.
 - Trend is disabled while a session or countdown is active.
 
 ## Storybook Scope

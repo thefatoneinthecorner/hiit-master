@@ -14,6 +14,8 @@ export function WheelPicker({ value, min, max, onChange, labels }: WheelPickerPr
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollFrameRef = useRef<number | null>(null);
   const skipAutoCenterRef = useRef(false);
+  const isAutoCenteringRef = useRef(false);
+  const hasUserScrollIntentRef = useRef(false);
   const values = Array.from({ length: max - min + 1 }, (_, index) => min + index);
   const hasLabels = labels !== undefined;
 
@@ -24,7 +26,16 @@ export function WheelPicker({ value, min, max, onChange, labels }: WheelPickerPr
     }
 
     const selected = containerRef.current?.querySelector<HTMLButtonElement>(`[data-value="${value}"]`);
-    selected?.scrollIntoView({ block: 'center' });
+    if (!selected) {
+      return;
+    }
+
+    isAutoCenteringRef.current = true;
+    hasUserScrollIntentRef.current = false;
+    selected.scrollIntoView({ block: 'center' });
+    window.requestAnimationFrame(() => {
+      isAutoCenteringRef.current = false;
+    });
   }, [value]);
 
   useEffect(
@@ -64,6 +75,10 @@ export function WheelPicker({ value, min, max, onChange, labels }: WheelPickerPr
   };
 
   const handleScroll = () => {
+    if (isAutoCenteringRef.current || !hasUserScrollIntentRef.current) {
+      return;
+    }
+
     if (scrollFrameRef.current !== null) {
       return;
     }
@@ -74,6 +89,10 @@ export function WheelPicker({ value, min, max, onChange, labels }: WheelPickerPr
     });
   };
 
+  const markUserScrollIntent = () => {
+    hasUserScrollIntentRef.current = true;
+  };
+
   return (
     <div class={`relative mx-auto h-44 overflow-hidden rounded-[1.6rem] border border-[color:var(--line)] bg-[color:var(--panel)] ${hasLabels ? 'w-56' : 'w-28'}`}>
       <div class="pointer-events-none absolute inset-x-2 top-1/2 h-12 -translate-y-1/2 rounded-xl border border-[color:var(--line)] bg-white/25" />
@@ -81,6 +100,10 @@ export function WheelPicker({ value, min, max, onChange, labels }: WheelPickerPr
         ref={containerRef}
         data-testid="wheel-picker-scroll"
         onScroll={handleScroll}
+        onWheel={markUserScrollIntent}
+        onPointerDown={markUserScrollIntent}
+        onTouchStart={markUserScrollIntent}
+        onKeyDown={markUserScrollIntent}
         class="h-full snap-y overflow-y-auto py-16"
       >
         {values.map((item) => {
