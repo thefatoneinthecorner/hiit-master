@@ -28,6 +28,14 @@ const preview: Preview = {
       makePageScrollable(document.getElementById('storybook-root')?.firstElementChild as HTMLElement | null);
       makePageScrollable(document.getElementById('storybook-docs'));
 
+      const docsRoot = document.getElementById('storybook-docs');
+      if (docsRoot) {
+        docsRoot.style.setProperty('min-height', '0', 'important');
+        docsRoot.style.setProperty('height', '100vh', 'important');
+        docsRoot.style.setProperty('overflow-y', 'auto', 'important');
+        docsRoot.style.setProperty('-webkit-overflow-scrolling', 'touch', 'important');
+      }
+
       return <Story />;
     }
   ],

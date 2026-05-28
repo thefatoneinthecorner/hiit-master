@@ -11,7 +11,7 @@ allow_login_shell = false
 
 [mcp_servers.playwright]
 command = "npx"
-args = ["-y", "@playwright/mcp@latest", "--headless", "--browser", "chromium", "--isolated"]
+args = ["-y", "@playwright/mcp@latest", "--config", ".codex/playwright-mcp.json"]
 enabled = true
 startup_timeout_sec = 30
 tool_timeout_sec = 120
