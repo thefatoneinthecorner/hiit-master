@@ -2,13 +2,14 @@
 
 ## Purpose
 
-`RoundSettingsItem` renders one editable row in the Settings screen rounds list. It is used for the Warmup item, each numbered Round item, and the Cooldown item. The parent screen owns list ordering, expansion state, and persistence; this component owns the presentation and per-item controls.
+`RoundSettingsItem` renders one editable row in the Settings screen rounds list. It is used for the Warmup item, each numbered Round item, and the Cooldown item. The parent screen owns list ordering, expansion state, persistence, and surrounding panel chrome; this component owns the row interaction and per-item controls.
 
 ## Inputs
 
 - `label`: Display label for the row, such as `Warmup`, `Round 1`, or `Cooldown`.
 - `valueSec`: Duration value displayed and edited for the row, in seconds.
 - `expanded`: Whether the row detail area is open.
+- `class`: Optional additional class names for parent-owned spacing or layout.
 - `readOnly`: When true, the row must show read-only detail content instead of editable controls.
 - `deleteDisabled`: When true, the Delete action must be disabled.
 - `onToggle`: Called when the row label or collapsed value is activated.
@@ -18,17 +19,18 @@
 
 ## Collapsed State
 
-- The item is shown as a single bordered rounded row.
+- The item is shown as a single unframed row.
 - The row label is displayed on the left.
 - The current duration is displayed on the right as `{valueSec}s`.
-- Activating either the label or duration invokes `onToggle`.
+- Activating the row surface, label, or duration invokes `onToggle`.
 - No Stepper is visible.
 - Clone and Delete controls are not visible.
 
 ## Expanded Editable State
 
-- The item keeps all expanded content inside the same bordered rounded row.
+- The item keeps all expanded content inside the same row.
 - The label remains in the top-left area and toggles the row through `onToggle`.
+- Activating the row surface toggles the row.
 - The collapsed right-side duration text is hidden while expanded.
 - The Stepper is displayed below the header, centered horizontally within the item.
 - The Stepper receives `valueSec` and calls `onChange` with the next duration value.

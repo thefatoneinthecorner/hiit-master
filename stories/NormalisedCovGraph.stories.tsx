@@ -111,11 +111,9 @@ export const SessionHistory: Story = {
     await expect(canvasElement.querySelector('[data-testid="normalised-cov-crosshair-value"]')).toHaveClass(/z-20/);
     await expect(canvasElement.querySelector('[data-testid="normalised-cov-crosshair-date"]')).toHaveTextContent('27 May 26 (-0d)');
     await expect(canvasElement.querySelector('[data-testid="normalised-cov-crosshair-date"]')).toHaveClass(/z-20/);
-    await expect(canvasElement.querySelector('[data-testid="normalised-cov-time-band"]')).toBeInTheDocument();
-    await expect(canvasElement.querySelector('[data-testid="normalised-cov-active-time-band"]')).toBeInTheDocument();
-    await expect(canvasElement.querySelector('[data-testid="normalised-cov-time-band-label"]')).toHaveTextContent('Full Timer 2, 30s work');
-    await expect(canvasElement.querySelector('[data-testid="normalised-cov-time-band-label"]')).toHaveClass(/whitespace-nowrap/);
-    await expect(canvasElement.querySelector('[data-testid="normalised-cov-time-band-label"]')).toHaveClass(/font-normal/);
+    await expect(canvasElement.querySelector('[data-testid="normalised-cov-time-band"]')).not.toBeInTheDocument();
+    await expect(canvasElement.querySelector('[data-testid="normalised-cov-active-time-band"]')).not.toBeInTheDocument();
+    await expect(canvasElement.querySelector('[data-testid="normalised-cov-time-band-label"]')).not.toBeInTheDocument();
     const point = canvasElement.querySelector('[data-testid="normalised-cov-point"]');
     await expect(point).toBeInTheDocument();
     await expect(point).toHaveClass(/z-10/);
@@ -144,7 +142,7 @@ export const ScrubbedHistoricalSession: Story = {
   play: async ({ canvas, canvasElement }) => {
     await expect(canvas.getAllByText('8.59')[0]).toBeVisible();
     await expect(canvasElement.querySelector('[data-testid="normalised-cov-crosshair-date"]')).toHaveTextContent('23 May 26 (-4d)');
-    await expect(canvasElement.querySelector('[data-testid="normalised-cov-time-band-label"]')).toHaveTextContent('Full Timer 2, 28s work');
+    await expect(canvasElement.querySelector('[data-testid="normalised-cov-time-band-label"]')).not.toBeInTheDocument();
   },
 };
 
@@ -176,7 +174,7 @@ export const InteractiveScrubber: Story = {
     await expect(canvasElement.querySelector('[data-testid="normalised-cov-scrubber-horizontal"]')).toBeInTheDocument();
     await expect(canvasElement.querySelector('[data-testid="normalised-cov-crosshair-value"]')).toHaveTextContent('8.95');
     await expect(canvasElement.querySelector('[data-testid="normalised-cov-crosshair-date"]')).toHaveTextContent('27 May 26 (-0d)');
-    await expect(canvasElement.querySelector('[data-testid="normalised-cov-time-band-label"]')).toHaveTextContent('Full Timer 2, 30s work');
+    await expect(canvasElement.querySelector('[data-testid="normalised-cov-time-band-label"]')).not.toBeInTheDocument();
     await expect(scrubber.tagName).toBe('DIV');
     fireEvent.pointerMove(scrubber, { pointerId: 1, clientX: clientXForDate(scrubber, '2026-05-23T11:36:00.000Z') });
     await expect(args.onSelectedIndexChange).not.toHaveBeenCalledWith(14);
@@ -189,7 +187,7 @@ export const InteractiveScrubber: Story = {
     await expect(canvasElement.querySelector('[data-testid="normalised-cov-scrubber-horizontal"]')).toBeInTheDocument();
     await expect(canvasElement.querySelector('[data-testid="normalised-cov-crosshair-value"]')).toHaveTextContent('8.59');
     await expect(canvasElement.querySelector('[data-testid="normalised-cov-crosshair-date"]')).toHaveTextContent('23 May 26 (-4d)');
-    await expect(canvasElement.querySelector('[data-testid="normalised-cov-time-band-label"]')).toHaveTextContent('Full Timer 2, 28s work');
+    await expect(canvasElement.querySelector('[data-testid="normalised-cov-time-band-label"]')).not.toBeInTheDocument();
     fireEvent.pointerUp(scrubber, { pointerId: 1, clientX: clientXForDate(scrubber, '2026-05-23T11:36:00.000Z') });
     fireEvent.pointerMove(scrubber, { pointerId: 1, clientX: clientXForDate(scrubber, '2026-05-27T11:34:00.000Z') });
     await expect(canvasElement.querySelector('[data-testid="normalised-cov-crosshair-date"]')).toHaveTextContent('23 May 26 (-4d)');
@@ -205,7 +203,7 @@ export const Empty: Story = {
     selectedIndex: 0,
   },
   play: async ({ canvas, canvasElement }) => {
-    await expect(canvas.getAllByText('--')).toHaveLength(1);
+    await expect(canvas.queryByText('--')).not.toBeInTheDocument();
     await expect(canvas.getByRole('slider', { name: 'Normalised CoV scrub position' })).toHaveAttribute('aria-disabled', 'true');
     await expect(canvasElement.querySelector('polyline')).not.toBeInTheDocument();
     await expect(canvasElement.querySelector('[data-testid="normalised-cov-active-time-band"]')).not.toBeInTheDocument();

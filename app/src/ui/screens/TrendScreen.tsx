@@ -5,7 +5,7 @@ import { buildNormalisedCovTrendPoints } from '../../domain/trend/normalisedCov'
 import { isComparisonEligibleSession } from '../../domain/session/lifecycle';
 import type { SessionRecord } from '../../domain/shared/types';
 import { HeartGraph } from '../components/HeartGraph';
-import { NormalisedCovGraph, type NormalisedCovPoint } from '../components/NormalisedCovGraph';
+import { formatNormalisedCovPointLabel, NormalisedCovGraph, type NormalisedCovPoint } from '../components/NormalisedCovGraph';
 
 interface TrendScreenViewProps {
   points: NormalisedCovPoint[];
@@ -14,6 +14,31 @@ interface TrendScreenViewProps {
   selectedIndex: number;
   onSelectedIndexChange: (index: number) => void;
   heartGraphScrubElapsedSec?: number;
+}
+
+function SmallCapsTitle({ text }: { text: string }) {
+  const parts = text.split(/([A-Za-z]+)/);
+
+  return (
+    <h2 class="text-sm font-medium tracking-[0.12em] text-[color:var(--muted)]" aria-label={text} data-testid="trend-selected-point-title">
+      {parts.map((part, index) => {
+        if (!/^[A-Za-z]+$/.test(part)) {
+          return <span key={`${part}-${index}`}>{part}</span>;
+        }
+
+        return (
+          <span key={`${part}-${index}`}>
+            <span>{part.slice(0, 1)}</span>
+            {part.length > 1 ? (
+              <span class="[font-variant-caps:all-small-caps]" data-testid="trend-selected-point-title-smallcaps">
+                {part.slice(1)}
+              </span>
+            ) : null}
+          </span>
+        );
+      })}
+    </h2>
+  );
 }
 
 export function TrendScreenView({
@@ -59,6 +84,7 @@ export function TrendScreenView({
         heightClassName="h-64"
         {...(referenceDate ? { referenceDate } : {})}
       />
+      <SmallCapsTitle text={formatNormalisedCovPointLabel(activePoint)} />
       {activeSession ? (
         <HeartGraph
           samples={activeSession.samples}

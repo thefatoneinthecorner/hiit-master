@@ -42,7 +42,7 @@ function formatActualWorkDuration(value: number | null | undefined): string {
   return value === null || value === undefined ? '--' : `${value}s work`;
 }
 
-function formatBandDescription(point: NormalisedCovPoint | null): string {
+export function formatNormalisedCovPointLabel(point: NormalisedCovPoint | null): string {
   if (!point) {
     return '--';
   }
@@ -206,12 +206,6 @@ export function NormalisedCovGraph({
   const getBandStartX = (index: number) => index === 0 ? horizontalInset : (getX(index - 1) + getX(index)) / 2;
   const getBandEndX = (index: number) =>
     index >= validPoints.length - 1 ? width - horizontalInset : (getX(index) + getX(index + 1)) / 2;
-  const activeBand = bands.find((band) => activeIndex >= band.startIndex && activeIndex <= band.endIndex) ?? null;
-  const activeBandStartX = activeBand ? getBandStartX(activeBand.startIndex) : null;
-  const activeBandEndX = activeBand ? getBandEndX(activeBand.endIndex) : null;
-  const activeBandCenterX = activeBandStartX !== null && activeBandEndX !== null ? (activeBandStartX + activeBandEndX) / 2 : null;
-  const activeBandLabelTransform =
-    activeBandCenterX === null ? 'translateX(-50%)' : activeBandCenterX < 16 ? 'translateX(0)' : activeBandCenterX > 84 ? 'translateX(-100%)' : 'translateX(-50%)';
 
   return (
     <section class="w-full">
@@ -328,35 +322,6 @@ export function NormalisedCovGraph({
             aria-hidden="true"
           />
         ))}
-      </div>
-      <div class="mt-3" data-testid="normalised-cov-time-band">
-        <div class="relative h-1.5">
-          {activeBandStartX !== null && activeBandEndX !== null ? (
-            <span
-              class="absolute top-0 h-full rounded-full bg-[color:var(--accent)]"
-              style={{
-                left: `${activeBandStartX}%`,
-                width: `${activeBandEndX - activeBandStartX}%`,
-              }}
-              data-testid="normalised-cov-active-time-band"
-            />
-          ) : null}
-        </div>
-        {activeBandCenterX !== null ? (
-          <div class="relative mt-2 min-h-5">
-            <div
-              class="absolute max-w-[calc(100%_-_1rem)] overflow-hidden text-ellipsis whitespace-nowrap text-center text-sm font-normal text-[color:var(--text)]"
-              style={{ left: `${activeBandCenterX}%`, transform: activeBandLabelTransform }}
-              data-testid="normalised-cov-time-band-label"
-            >
-              {formatBandDescription(activePoint)}
-            </div>
-          </div>
-        ) : (
-          <div class="mt-2 text-center text-sm font-normal text-[color:var(--text)]" data-testid="normalised-cov-time-band-label">
-            {formatBandDescription(activePoint)}
-          </div>
-        )}
       </div>
     </section>
   );

@@ -8,8 +8,8 @@ interface RoundSettingsItemProps {
   label: string;
   valueSec: number;
   expanded: boolean;
+  class?: string;
   readOnly?: boolean;
-  bordered?: boolean;
   deleteDisabled?: boolean;
   onToggle: () => void;
   onChange: (value: number) => void;
@@ -32,8 +32,8 @@ export function RoundSettingsItem({
   label,
   valueSec,
   expanded,
+  class: className = '',
   readOnly = false,
-  bordered = true,
   deleteDisabled = false,
   onToggle,
   onChange,
@@ -41,7 +41,6 @@ export function RoundSettingsItem({
   onDelete
 }: RoundSettingsItemProps) {
   const hasActions = !readOnly && (onClone || onDelete);
-  const borderClass = bordered ? 'border border-[color:var(--line)]' : 'border border-transparent';
 
   function handlePanelClick(event: MouseEvent) {
     const target = event.target as HTMLElement | null;
@@ -54,7 +53,7 @@ export function RoundSettingsItem({
 
   return (
     <div
-      class={`w-full rounded-xl ${borderClass} bg-white/30 px-4 py-3 text-left transition-colors duration-150`}
+      class={`w-full text-left transition-colors duration-150 ${className}`}
       data-testid={`round-settings-item-${label.toLowerCase().replaceAll(' ', '-')}`}
       onClick={handlePanelClick}
     >

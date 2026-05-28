@@ -84,12 +84,19 @@ function TrendScreenStoryView(args: TrendScreenArgs) {
 export const Default: Story = {
   play: async ({ args, canvas, canvasElement }) => {
     await expect(canvas.queryByRole('heading', { name: 'Trends' })).not.toBeInTheDocument();
+    await expect(canvas.getByRole('heading', { name: 'Full Timer 2 2, 30s work' })).toBeVisible();
+    await expect(canvas.getByTestId('trend-selected-point-title')).toHaveClass(/tracking-\[0\.12em\]/);
+    await expect(canvasElement.querySelectorAll('[data-testid="trend-selected-point-title-smallcaps"]').length).toBeGreaterThan(1);
     await expect(canvas.getByRole('heading', { name: 'Normalised CoV' })).toBeVisible();
     await expect(canvas.getByTestId('heart-graph-crosshair-time')).toHaveTextContent('14:04 R7 W Δ12 ↓5');
 
     const graphSurfaces = canvasElement.querySelectorAll('.graph-surface');
+    const normalisedGraph = canvas.getByTestId('normalised-cov-graph-surface');
+    const selectedPointTitle = canvas.getByTestId('trend-selected-point-title');
     const heartGraph = graphSurfaces[graphSurfaces.length - 1] as HTMLDivElement | undefined;
     await expect(heartGraph).toBeInTheDocument();
+    await expect(normalisedGraph.compareDocumentPosition(selectedPointTitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await expect(selectedPointTitle.compareDocumentPosition(heartGraph) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     if (heartGraph) {
       const bounds = heartGraph.getBoundingClientRect();
       fireEvent.pointerDown(heartGraph, { pointerId: 2, clientX: bounds.left + bounds.width * 0.5, buttons: 1 });
@@ -108,10 +115,12 @@ export const Default: Story = {
     fireEvent.pointerMove(scrubber, { pointerId: 1, clientX: clientXForTrendDate(scrubber, '2026-05-23T10:36:38.890Z') });
 
     await expect(args.onSelectedIndexChange).toHaveBeenCalled();
+    await waitFor(() => expect(canvas.getByRole('heading', { name: 'Full Timer 2, 28s work' })).toBeVisible());
     await waitFor(() => expect(canvas.getByTestId('heart-graph-crosshair-time')).toHaveTextContent('14:04 R7 R Δ9 ↓3'));
 
     const scrubberBounds = scrubber.getBoundingClientRect();
     fireEvent.pointerMove(scrubber, { pointerId: 1, clientX: scrubberBounds.right + scrubberBounds.width });
+    await waitFor(() => expect(canvas.getByRole('heading', { name: 'Full Timer 2 2, 30s work' })).toBeVisible());
     await waitFor(() => expect(canvas.getByTestId('heart-graph-crosshair-time')).toHaveTextContent('14:04 R7 W Δ12 ↓5'));
     fireEvent.pointerUp(scrubber, { pointerId: 1, clientX: scrubberBounds.right + scrubberBounds.width });
     fireEvent.pointerMove(scrubber, { pointerId: 1, clientX: clientXForTrendDate(scrubber, '2026-05-23T10:36:38.890Z') });

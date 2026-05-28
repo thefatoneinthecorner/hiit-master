@@ -3,6 +3,7 @@ import { expect, fn, userEvent } from 'storybook/test';
 
 import '../app/src/styles.css';
 import { RoundSettingsItem } from '../app/src/ui/components/RoundSettingsItem';
+import { RoundedPanel } from '../app/src/ui/components/RoundedPanel';
 import roundSettingsItemSpec from '../specs/ui/components/RoundSettingsItem.spec.md?raw';
 
 type RoundSettingsItemArgs = {
@@ -10,7 +11,6 @@ type RoundSettingsItemArgs = {
   valueSec: number;
   expanded: boolean;
   readOnly?: boolean;
-  bordered?: boolean;
   deleteDisabled?: boolean;
   onToggle: () => void;
   onChange: (value: number) => void;
@@ -33,12 +33,16 @@ const meta = {
       },
     },
   },
+  render: (args) => (
+    <RoundedPanel padding="sm">
+      <RoundSettingsItem {...args} />
+    </RoundedPanel>
+  ),
   args: {
     label: 'Round 1',
     valueSec: 90,
     expanded: false,
     readOnly: false,
-    bordered: true,
     deleteDisabled: false,
     onToggle: fn(),
     onChange: fn(),
@@ -48,7 +52,6 @@ const meta = {
     valueSec: { control: { type: 'number', min: 1 } },
     expanded: { control: 'boolean' },
     readOnly: { control: 'boolean' },
-    bordered: { control: 'boolean' },
     deleteDisabled: { control: 'boolean' },
   },
 } satisfies Meta<RoundSettingsItemArgs>;

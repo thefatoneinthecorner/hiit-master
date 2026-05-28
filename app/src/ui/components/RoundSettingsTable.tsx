@@ -32,7 +32,7 @@ export function RoundSettingsTable({
         label="Warmup"
         valueSec={warmupSec}
         expanded={expandedKey === 'warmup'}
-        bordered={false}
+        class="px-4 py-1"
         readOnly={readOnly}
         onToggle={() => setExpandedKey(expandedKey === 'warmup' ? null : 'warmup')}
         onChange={(value) => onWarmupChange?.(value)}
@@ -47,7 +47,7 @@ export function RoundSettingsTable({
             label={`Round ${index + 1}`}
             valueSec={value}
             expanded={expanded}
-            bordered={false}
+            class="px-4 py-1"
             readOnly={readOnly}
             deleteDisabled={baseRestsSec.length <= 1}
             onToggle={() => setExpandedKey(expanded ? null : key)}
@@ -61,7 +61,7 @@ export function RoundSettingsTable({
         label="Cooldown"
         valueSec={cooldownBaseSec}
         expanded={expandedKey === 'cooldown'}
-        bordered={false}
+        class="px-4 py-1"
         readOnly={readOnly}
         onToggle={() => setExpandedKey(expandedKey === 'cooldown' ? null : 'cooldown')}
         onChange={(value) => onCooldownChange?.(value)}

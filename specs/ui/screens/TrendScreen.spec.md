@@ -6,7 +6,8 @@
 
 ## Layout
 
-- The page does not render a top title; it starts directly with `NormalisedCovGraph` to preserve mobile vertical space.
+- Between `NormalisedCovGraph` and the embedded `HeartGraph`, the page renders the selected point title using the selected point's profile name and actual work duration, for example `Full Timer 2, 30s work`.
+- The selected point title uses matching typography to the `Normalised CoV` graph title: small caps for non-initial letters and regular caps for initial letters.
 - The primary content is `NormalisedCovGraph`.
 - The graph uses normalized CoV points derived from saved sessions.
 - Below the trend graph, the page renders a crosshair `HeartGraph` for the session represented by the currently scrubbed trend point.

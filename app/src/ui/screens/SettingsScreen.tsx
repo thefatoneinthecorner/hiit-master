@@ -1,5 +1,6 @@
 import { useRef, useState } from 'preact/hooks';
 import { appStore } from '../../application/store';
+import { RoundedPanel } from '../components/RoundedPanel';
 import { RoundSettingsItem } from '../components/RoundSettingsItem';
 import { Stepper } from '../components/Stepper';
 
@@ -132,40 +133,45 @@ export function SettingsScreen() {
             </div>
           </div>
           <div class="space-y-2">
-            <RoundSettingsItem
-              label="Warmup"
-              valueSec={draft.warmupSec}
-              expanded={expandedKey === 'warmup'}
-              readOnly={referenced}
-              onToggle={() => setExpandedKey(expandedKey === 'warmup' ? null : 'warmup')}
-              onChange={(value) => appStore.updateDraftProfile({ warmupSec: value })}
-            />
+            <RoundedPanel padding="sm" radius="md">
+              <RoundSettingsItem
+                label="Warmup"
+                valueSec={draft.warmupSec}
+                expanded={expandedKey === 'warmup'}
+                readOnly={referenced}
+                onToggle={() => setExpandedKey(expandedKey === 'warmup' ? null : 'warmup')}
+                onChange={(value) => appStore.updateDraftProfile({ warmupSec: value })}
+              />
+            </RoundedPanel>
             {draft.baseRestsSec.map((value, index) => {
               const key = `round-${index}`;
               const expanded = expandedKey === key;
               return (
-                <RoundSettingsItem
-                  key={key}
-                  label={`Round ${index + 1}`}
-                  valueSec={value}
-                  expanded={expanded}
-                  readOnly={referenced}
-                  deleteDisabled={draft.baseRestsSec.length <= 1}
-                  onToggle={() => setExpandedKey(expanded ? null : key)}
-                  onChange={(next) => appStore.updateDraftRecovery(index, next)}
-                  onClone={() => appStore.cloneDraftRecovery(index)}
-                  onDelete={() => appStore.deleteDraftRecovery(index)}
-                />
+                <RoundedPanel key={key} padding="sm" radius="md">
+                  <RoundSettingsItem
+                    label={`Round ${index + 1}`}
+                    valueSec={value}
+                    expanded={expanded}
+                    readOnly={referenced}
+                    deleteDisabled={draft.baseRestsSec.length <= 1}
+                    onToggle={() => setExpandedKey(expanded ? null : key)}
+                    onChange={(next) => appStore.updateDraftRecovery(index, next)}
+                    onClone={() => appStore.cloneDraftRecovery(index)}
+                    onDelete={() => appStore.deleteDraftRecovery(index)}
+                  />
+                </RoundedPanel>
               );
             })}
-            <RoundSettingsItem
-              label="Cooldown"
-              valueSec={draft.cooldownBaseSec}
-              expanded={expandedKey === 'cooldown'}
-              readOnly={referenced}
-              onToggle={() => setExpandedKey(expandedKey === 'cooldown' ? null : 'cooldown')}
-              onChange={(value) => appStore.updateDraftProfile({ cooldownBaseSec: value })}
-            />
+            <RoundedPanel padding="sm" radius="md">
+              <RoundSettingsItem
+                label="Cooldown"
+                valueSec={draft.cooldownBaseSec}
+                expanded={expandedKey === 'cooldown'}
+                readOnly={referenced}
+                onToggle={() => setExpandedKey(expandedKey === 'cooldown' ? null : 'cooldown')}
+                onChange={(value) => appStore.updateDraftProfile({ cooldownBaseSec: value })}
+              />
+            </RoundedPanel>
           </div>
         </div>
       ) : null}

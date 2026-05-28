@@ -26,10 +26,7 @@
 - A date pill is overlaid inside the graph using the same typography as the normalized CoV pill.
 - The date pill displays the selected date in `DD MMM YY` format followed by the relative day gap as a negative day count in round brackets, for example `23 May 26 (-4d)`.
 - The graph reserves a bottom label lane so the date pill does not collide with plotted data points.
-- Below the graph, an underbar shows the full time span of the selected contiguous band without a background track.
-- The underbar is followed by a regular-weight band description using the selected point's profile name and actual work duration, for example `Full Timer 2, 28s work`.
-- The band description is rendered on one line.
-- The band description is centered under the active underbar segment by default, only switching to a left or right edge anchor when centering would clip it at the graph extremes.
+- The graph does not render an underbar or selected band description below the graph surface.
 - Sample markers are rendered as absolutely positioned CSS circles outside the stretched SVG coordinate system, so they remain circular regardless of graph aspect ratio.
 
 ## Interaction
@@ -44,7 +41,7 @@
 - Moving the pressed pointer scrubber calls `onSelectedIndexChange` with the nearest valid-point index for the selected timestamp.
 - The graph surface exposes slider semantics and supports `ArrowLeft`, `ArrowRight`, `Home`, and `End` keyboard navigation.
 - No separate slider or range input is rendered.
-- The in-graph scrubber labels and underbar update to show the selected date, relative age, profile name, actual work duration, active band description, and scaled normalized CoV value.
+- The in-graph scrubber labels update to show the selected date, relative age, and scaled normalized CoV value.
 
 ## Storybook Coverage
 
