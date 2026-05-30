@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { appStore } from '../../application/store';
+import { deriveBpmSessionPlan } from '../../domain/analysis/bpmTimeline';
+import { analyzeSessionRounds } from '../../domain/analysis/recovery';
 import { buildNormalisedCovTrendPoints } from '../../domain/trend/normalisedCov';
 import { isComparisonEligibleSession } from '../../domain/session/lifecycle';
 import type { SessionRecord } from '../../domain/shared/types';
@@ -61,9 +63,15 @@ export function TrendScreenView({
       .filter((session) => session.startedAt < activeSession.startedAt && isComparisonEligibleSession(session))
       .sort((first, second) => second.startedAt.localeCompare(first.startedAt))
     : [];
+  const activePlan = activeSession ? deriveBpmSessionPlan(activeSession) : null;
+  const activeAnalysis = activeSession && activePlan
+    ? activePlan === activeSession.plan
+      ? activeSession.analysis
+      : analyzeSessionRounds(activePlan, activeSession.samples)
+    : null;
   const previousActiveSessionIdRef = useRef(activeSession?.id ?? null);
-  const activeScrubElapsedSec = activeSession
-    ? Math.min(heartScrubElapsedSec, activeSession.plan.totalDurationSec)
+  const activeScrubElapsedSec = activePlan
+    ? Math.min(heartScrubElapsedSec, activePlan.totalDurationSec)
     : null;
 
   useEffect(() => {
@@ -88,21 +96,25 @@ export function TrendScreenView({
       {activeSession ? (
         <HeartGraph
           samples={activeSession.samples}
-          totalDurationSec={activeSession.plan.totalDurationSec}
+          totalDurationSec={activePlan?.totalDurationSec ?? activeSession.plan.totalDurationSec}
           nominalPeakHeartrate={activeSession.profileSnapshot.nominalPeakHeartrate}
           labelledAxes
           scrubElapsedSec={activeScrubElapsedSec}
           timeScale="duration"
           crosshairScrubber
           heightClassName="h-56"
-          phases={activeSession.plan.phases}
-          analysis={activeSession.analysis}
+          phases={activePlan?.phases ?? activeSession.plan.phases}
+          analysis={activeAnalysis ?? activeSession.analysis}
           onScrubElapsedSecChange={setHeartScrubElapsedSec}
-          previousSessions={previousSessions.map((session) => ({
-            samples: session.samples,
-            phases: session.plan.phases,
-            analysis: session.analysis,
-          }))}
+          previousSessions={previousSessions.map((session) => {
+            const plan = deriveBpmSessionPlan(session);
+
+            return {
+              samples: session.samples,
+              phases: plan.phases,
+              analysis: plan === session.plan ? session.analysis : analyzeSessionRounds(plan, session.samples),
+            };
+          })}
         />
       ) : null}
     </section>

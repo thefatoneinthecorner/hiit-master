@@ -8,6 +8,7 @@ import { buildNormalisedCovTrendPoints } from '../app/src/domain/trend/normalise
 import type { SessionRecord } from '../app/src/domain/shared/types';
 import type { NormalisedCovPoint } from '../app/src/ui/components/NormalisedCovGraph';
 import { TrendScreenView } from '../app/src/ui/screens/TrendScreen';
+import hiitMasterBpmBackup from '../hiit-master-backup (1).json';
 import hiitMasterBackup from '../hiit-master-backup.json';
 import trendScreenSpec from '../specs/ui/screens/TrendScreen.spec.md?raw';
 
@@ -17,6 +18,7 @@ type TrendScreenArgs = {
   referenceDate?: string;
   selectedIndex: number;
   onSelectedIndexChange: (index: number) => void;
+  heartGraphScrubElapsedSec?: number;
 };
 
 const backupSessions = (hiitMasterBackup as { sessions: SessionRecord[] }).sessions.map((session) => ({
@@ -25,6 +27,12 @@ const backupSessions = (hiitMasterBackup as { sessions: SessionRecord[] }).sessi
 }));
 const points = buildNormalisedCovTrendPoints(backupSessions);
 const latestValidPointIndex = points.filter((point) => point.value !== null && point.value > 0).length - 1;
+const bpmBackupSessions = (hiitMasterBpmBackup as { sessions: SessionRecord[] }).sessions.map((session) => ({
+  ...session,
+  analysis: analyzeSessionRounds(session.plan, session.samples),
+}));
+const bpmPoints = buildNormalisedCovTrendPoints(bpmBackupSessions);
+const latestBpmValidPointIndex = bpmPoints.filter((point) => point.value !== null && point.value > 0).length - 1;
 
 function clientXForTrendDate(graph: HTMLElement, date: string): number {
   const bounds = graph.getBoundingClientRect();
@@ -125,5 +133,20 @@ export const Default: Story = {
     fireEvent.pointerUp(scrubber, { pointerId: 1, clientX: scrubberBounds.right + scrubberBounds.width });
     fireEvent.pointerMove(scrubber, { pointerId: 1, clientX: clientXForTrendDate(scrubber, '2026-05-23T10:36:38.890Z') });
     await expect(canvas.getByTestId('heart-graph-crosshair-time')).toHaveTextContent('14:04 R7 W Δ12 ↓5');
+  },
+};
+
+export const BpmSessionUsesActualPhaseTimeline: Story = {
+  args: {
+    points: bpmPoints,
+    sessions: bpmBackupSessions,
+    referenceDate: '2026-05-29T12:00:00.000Z',
+    selectedIndex: latestBpmValidPointIndex,
+    heartGraphScrubElapsedSec: 583,
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('heading', { name: 'Full Timer 2 2, 30s work' })).toBeVisible();
+    await expect(canvas.getByTestId('heart-graph-crosshair-time')).toHaveTextContent('9:43 R4 W');
+    await expect(canvas.getByTestId('heart-graph-crosshair-time')).not.toHaveTextContent('9:43 R3 R');
   },
 };

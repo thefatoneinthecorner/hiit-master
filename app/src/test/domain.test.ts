@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { deriveBpmSessionPlan } from '../domain/analysis/bpmTimeline';
 import { analyzeSessionRounds } from '../domain/analysis/recovery';
 import {
   buildComparisonRounds,
@@ -180,6 +181,59 @@ describe('domain rules', () => {
       peak: 151,
       trough: 118
     });
+  });
+
+  it('reconstructs BPM session phases from target crossings instead of nominal round timings', () => {
+    const profile = {
+      ...STARTER_PROFILE,
+      warmupSec: 300,
+      cooldownBaseSec: 180,
+      baseRestsSec: [90, 75],
+      bpmTargets: [
+        { maxBpm: 120, minBpm: 90 },
+        { maxBpm: 130, minBpm: 95 }
+      ]
+    };
+    const nominalPlan = createBpmWorkoutPlan(profile);
+    const session: SessionRecord = {
+      id: 'bpm-session',
+      startedAt: '2026-05-29T12:23:54.898Z',
+      endedAt: '2026-05-29T12:47:06.948Z',
+      name: 'BPM session',
+      profileId: profile.id,
+      profileName: profile.name,
+      profileSnapshot: profile,
+      actualWorkDurationSec: profile.workDurationSec,
+      settingsMode: 'bpm',
+      status: 'completed',
+      isCompromised: false,
+      hrCoverageComplete: true,
+      plan: nominalPlan,
+      samples: [
+        { elapsedSec: 310, bpm: 120 },
+        { elapsedSec: 340, bpm: 88 },
+        { elapsedSec: 380, bpm: 131 },
+        { elapsedSec: 405, bpm: 94 },
+        { elapsedSec: 580, bpm: 110 }
+      ],
+      analysis: []
+    };
+
+    const actualPlan = deriveBpmSessionPlan(session);
+
+    expect(nominalPlan.phases.slice(1, 5).map((phase) => [phase.kind, phase.startSec, phase.endSec])).toEqual([
+      ['work', 300, 330],
+      ['rest', 330, 420],
+      ['work', 420, 450],
+      ['rest', 450, 525]
+    ]);
+    expect(actualPlan.phases.slice(1, 5).map((phase) => [phase.kind, phase.startSec, phase.endSec])).toEqual([
+      ['work', 300, 310],
+      ['rest', 310, 340],
+      ['work', 340, 380],
+      ['rest', 380, 405]
+    ]);
+    expect(actualPlan.totalDurationSec).toBe(585);
   });
 
   it('finds the most recent eligible same-profile comparison session', () => {
