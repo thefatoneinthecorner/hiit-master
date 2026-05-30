@@ -6,9 +6,14 @@ import {
   findPreviousComparableSession,
   getReplayRecoveryVisibleRoundIndexes
 } from '../domain/comparison/comparison';
-import { STARTER_PROFILE, getDefaultActualWorkDurationSec } from '../domain/shared/profile';
+import {
+  STARTER_PROFILE,
+  deriveBpmTargetsFromSession,
+  getDefaultActualWorkDurationSec,
+  getLatestCompletedProfileSession
+} from '../domain/shared/profile';
 import type { SessionRecord } from '../domain/shared/types';
-import { createWorkoutPlan } from '../domain/workout/plan';
+import { createBpmWorkoutPlan, createWorkoutPlan } from '../domain/workout/plan';
 import { deriveSessionIntegrity, filterPlausibleBpm } from '../domain/session/lifecycle';
 
 describe('domain rules', () => {
@@ -30,6 +35,87 @@ describe('domain rules', () => {
     expect((firstRound?.workDurationSec ?? 0) + (firstRound?.restDurationSec ?? 0)).toBe(
       firstRound?.nominalRoundDurationSec
     );
+  });
+
+  it('creates a BPM workout plan with timed warmup and cooldown around target-based rounds', () => {
+    const plan = createBpmWorkoutPlan({
+      ...STARTER_PROFILE,
+      warmupSec: 300,
+      cooldownBaseSec: 180,
+      baseRestsSec: [90, 75]
+    });
+
+    expect(plan.phases.map((phase) => phase.kind)).toEqual(['warmup', 'work', 'rest', 'work', 'rest', 'cooldown']);
+    expect(plan.phases[0]).toMatchObject({ kind: 'warmup', durationSec: 300 });
+    expect(plan.phases.at(-1)).toMatchObject({ kind: 'cooldown', roundIndex: null, durationSec: 180 });
+  });
+
+  it('derives missing BPM targets from the latest completed profile session phase boundaries', () => {
+    const profile = {
+      ...STARTER_PROFILE,
+      id: 'profile-a',
+      warmupSec: 300,
+      workDurationSec: 30,
+      baseRestsSec: [90, 75],
+      cooldownBaseSec: 180
+    };
+    const plan = createWorkoutPlan(profile, 30);
+    const session = {
+      id: 'session-a',
+      startedAt: '2026-05-01T10:00:00.000Z',
+      endedAt: '2026-05-01T10:30:00.000Z',
+      name: 'session',
+      profileId: profile.id,
+      profileName: profile.name,
+      profileSnapshot: profile,
+      actualWorkDurationSec: 30,
+      status: 'completed' as const,
+      isCompromised: false,
+      hrCoverageComplete: true,
+      plan,
+      samples: [
+        { elapsedSec: 330, bpm: 142 },
+        { elapsedSec: 420, bpm: 111 },
+        { elapsedSec: 450, bpm: 151 },
+        { elapsedSec: 480, bpm: 143 }
+      ],
+      analysis: [
+        { roundIndex: 2, peak: 151, trough: 143, delta: 8, recoveryWindowStartSec: 450, recoveryWindowEndSec: 480 }
+      ]
+    };
+
+    expect(deriveBpmTargetsFromSession(profile, session)).toEqual([
+      { maxBpm: 142, minBpm: 111 },
+      { maxBpm: 151, minBpm: 143 }
+    ]);
+  });
+
+  it('selects the latest completed same-profile session for BPM target derivation', () => {
+    const plan = createWorkoutPlan(STARTER_PROFILE, 30);
+    const baseSession = (id: string, startedAt: string, status: SessionRecord['status'] = 'completed'): SessionRecord => ({
+      id,
+      startedAt,
+      endedAt: startedAt,
+      name: id,
+      profileId: STARTER_PROFILE.id,
+      profileName: STARTER_PROFILE.name,
+      profileSnapshot: STARTER_PROFILE,
+      actualWorkDurationSec: 30,
+      status,
+      isCompromised: false,
+      hrCoverageComplete: true,
+      plan,
+      samples: [],
+      analysis: []
+    });
+
+    const latest = getLatestCompletedProfileSession(STARTER_PROFILE.id, [
+      baseSession('old', '2026-05-01T10:00:00.000Z'),
+      baseSession('ended-early', '2026-05-03T10:00:00.000Z', 'ended_early'),
+      baseSession('new', '2026-05-02T10:00:00.000Z')
+    ]);
+
+    expect(latest?.id).toBe('new');
   });
 
   it('filters implausible bpm values before persistence or charting', () => {
@@ -70,6 +156,30 @@ describe('domain rules', () => {
 
     expect(analyses[0]).toMatchObject({ peak: 172, trough: 110, delta: 62 });
     expect(analyses[1]?.delta).toBe(52);
+  });
+
+  it('analyzes BPM plans with a final rest before a separate cooldown', () => {
+    const plan = createBpmWorkoutPlan({
+      ...STARTER_PROFILE,
+      warmupSec: 300,
+      cooldownBaseSec: 180,
+      baseRestsSec: [90, 75]
+    });
+    const samples = [
+      { elapsedSec: 320, bpm: 145 },
+      { elapsedSec: 410, bpm: 112 },
+      { elapsedSec: 440, bpm: 151 },
+      { elapsedSec: 510, bpm: 118 }
+    ];
+
+    const analyses = analyzeSessionRounds(plan, samples);
+
+    expect(analyses).toHaveLength(2);
+    expect(analyses[1]).toMatchObject({
+      roundIndex: 2,
+      peak: 151,
+      trough: 118
+    });
   });
 
   it('finds the most recent eligible same-profile comparison session', () => {

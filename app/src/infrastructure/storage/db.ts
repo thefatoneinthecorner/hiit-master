@@ -1,8 +1,9 @@
-import type { SessionProfile, SessionRecord } from '../../domain/shared/types';
+import type { SessionProfile, SessionRecord, SettingsMode } from '../../domain/shared/types';
 import { STARTER_PROFILE } from '../../domain/shared/profile';
 
 export interface AppSettings {
   selectedProfileId: string;
+  settingsMode?: SettingsMode;
   actualWorkDurationByProfileId?: Record<string, number>;
 }
 
@@ -20,6 +21,7 @@ const DEFAULT_SNAPSHOT: AppSnapshot = {
   profiles: [STARTER_PROFILE],
   settings: {
     selectedProfileId: STARTER_PROFILE.id,
+    settingsMode: 'duration',
     actualWorkDurationByProfileId: {}
   },
   sessions: []
@@ -106,6 +108,7 @@ export async function loadSnapshot(): Promise<AppSnapshot> {
           ...snapshot,
           settings: {
             ...snapshot.settings,
+            settingsMode: snapshot.settings.settingsMode ?? 'duration',
             actualWorkDurationByProfileId: snapshot.settings.actualWorkDurationByProfileId ?? {}
           }
         });

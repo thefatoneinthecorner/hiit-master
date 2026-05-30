@@ -1,7 +1,9 @@
 import { useRef } from 'preact/hooks';
 
 import { appStore } from '../../application/store';
+import { getProfileBpmTargets } from '../../domain/shared/profile';
 import type { SessionProfile } from '../../domain/shared/types';
+import { BPMRoundSettingsTable } from '../components/BPMRoundSettingsTable';
 import { IconButton } from '../components/IconButton';
 import { RoundSettingsTable } from '../components/RoundSettingsTable';
 import { Stepper } from '../components/Stepper';
@@ -14,6 +16,9 @@ interface SettingsScreenViewProps {
   profiles: SessionProfile[];
   selectedProfileIndex: number;
   readOnly?: boolean;
+  showNominalWorkPeriod?: boolean;
+  showNominalPeakHeartrate?: boolean;
+  roundSettingsKind?: 'duration' | 'bpm';
   onProfileIndexChange: (index: number) => void;
   onImportFile: (file: File) => void;
   onExport: () => void;
@@ -26,6 +31,8 @@ interface SettingsScreenViewProps {
   onNotesChange?: (value: string) => void;
   onWarmupChange?: (value: number) => void;
   onRecoveryChange?: (index: number, value: number) => void;
+  onRecoveryMaxBpmChange?: (index: number, value: number) => void;
+  onRecoveryMinBpmChange?: (index: number, value: number) => void;
   onCooldownChange?: (value: number) => void;
   onCloneRecovery?: (index: number) => void;
   onDeleteRecovery?: (index: number) => void;
@@ -35,6 +42,9 @@ export function SettingsScreenView({
   profiles,
   selectedProfileIndex,
   readOnly = false,
+  showNominalWorkPeriod = true,
+  showNominalPeakHeartrate = true,
+  roundSettingsKind = 'duration',
   onProfileIndexChange,
   onImportFile,
   onExport,
@@ -47,6 +57,8 @@ export function SettingsScreenView({
   onNotesChange,
   onWarmupChange,
   onRecoveryChange,
+  onRecoveryMaxBpmChange,
+  onRecoveryMinBpmChange,
   onCooldownChange,
   onCloneRecovery,
   onDeleteRecovery,
@@ -102,35 +114,56 @@ export function SettingsScreenView({
               />
             </label>
           </div>
-          <RoundSettingsTable
-            warmupSec={selectedProfile.warmupSec}
-            baseRestsSec={selectedProfile.baseRestsSec}
-            cooldownBaseSec={selectedProfile.cooldownBaseSec}
-            readOnly={readOnly}
-            {...(onWarmupChange ? { onWarmupChange } : {})}
-            {...(onRecoveryChange ? { onRecoveryChange } : {})}
-            {...(onCooldownChange ? { onCooldownChange } : {})}
-            {...(onCloneRecovery ? { onCloneRecovery } : {})}
-            {...(onDeleteRecovery ? { onDeleteRecovery } : {})}
-          />
-          <div class="grid justify-items-center gap-4 md:grid-cols-2">
-            <div class="grid justify-items-center">
-              <div class="mb-2 text-center text-sm text-[color:var(--muted)]">Nominal Work Period</div>
-              {readOnly ? (
-                <ReadOnlyValue value={`${selectedProfile.workDurationSec}s`} />
-              ) : (
-                <Stepper value={selectedProfile.workDurationSec} onChange={(value) => onWorkDurationChange?.(value)} />
-              )}
+          {roundSettingsKind === 'bpm' ? (
+            <BPMRoundSettingsTable
+              warmupSec={selectedProfile.warmupSec}
+              bpmTargets={getProfileBpmTargets(selectedProfile)}
+              cooldownBaseSec={selectedProfile.cooldownBaseSec}
+              readOnly={readOnly}
+              {...(onWarmupChange ? { onWarmupChange } : {})}
+              {...(onRecoveryMaxBpmChange ? { onRecoveryMaxChange: onRecoveryMaxBpmChange } : {})}
+              {...(onRecoveryMinBpmChange ? { onRecoveryMinChange: onRecoveryMinBpmChange } : {})}
+              {...(onCooldownChange ? { onCooldownChange } : {})}
+              {...(onCloneRecovery ? { onCloneRecovery } : {})}
+              {...(onDeleteRecovery ? { onDeleteRecovery } : {})}
+            />
+          ) : (
+            <RoundSettingsTable
+              warmupSec={selectedProfile.warmupSec}
+              baseRestsSec={selectedProfile.baseRestsSec}
+              cooldownBaseSec={selectedProfile.cooldownBaseSec}
+              readOnly={readOnly}
+              {...(onWarmupChange ? { onWarmupChange } : {})}
+              {...(onRecoveryChange ? { onRecoveryChange } : {})}
+              {...(onCooldownChange ? { onCooldownChange } : {})}
+              {...(onCloneRecovery ? { onCloneRecovery } : {})}
+              {...(onDeleteRecovery ? { onDeleteRecovery } : {})}
+            />
+          )}
+          {(showNominalWorkPeriod || showNominalPeakHeartrate) ? (
+            <div class={`grid justify-items-center gap-4 ${showNominalWorkPeriod && showNominalPeakHeartrate ? 'md:grid-cols-2' : ''}`}>
+              {showNominalWorkPeriod ? (
+                <div class="grid justify-items-center">
+                  <div class="mb-2 text-center text-sm text-[color:var(--muted)]">Nominal Work Period</div>
+                  {readOnly ? (
+                    <ReadOnlyValue value={`${selectedProfile.workDurationSec}s`} />
+                  ) : (
+                    <Stepper value={selectedProfile.workDurationSec} onChange={(value) => onWorkDurationChange?.(value)} />
+                  )}
+                </div>
+              ) : null}
+              {showNominalPeakHeartrate ? (
+                <div class="grid justify-items-center">
+                  <div class="mb-2 text-center text-sm text-[color:var(--muted)]">Nominal Peak Heartrate</div>
+                  {readOnly ? (
+                    <ReadOnlyValue value={`${selectedProfile.nominalPeakHeartrate} bpm`} />
+                  ) : (
+                    <Stepper value={selectedProfile.nominalPeakHeartrate} onChange={(value) => onNominalPeakHeartrateChange?.(value)} />
+                  )}
+                </div>
+              ) : null}
             </div>
-            <div class="grid justify-items-center">
-              <div class="mb-2 text-center text-sm text-[color:var(--muted)]">Nominal Peak Heartrate</div>
-              {readOnly ? (
-                <ReadOnlyValue value={`${selectedProfile.nominalPeakHeartrate} bpm`} />
-              ) : (
-                <Stepper value={selectedProfile.nominalPeakHeartrate} onChange={(value) => onNominalPeakHeartrateChange?.(value)} />
-              )}
-            </div>
-          </div>
+          ) : null}
           <label class="grid gap-1">
             <span class="text-sm text-[color:var(--muted)]">Notes</span>
             <textarea

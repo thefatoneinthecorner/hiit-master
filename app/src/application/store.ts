@@ -7,7 +7,14 @@ import {
   findPreviousComparableSession,
   getReplayRecoveryVisibleRoundIndexes
 } from '../domain/comparison/comparison';
-import { createSessionName, createUniqueProfileName, getDefaultActualWorkDurationSec } from '../domain/shared/profile';
+import {
+  createSessionName,
+  createUniqueProfileName,
+  deriveBpmTargetsFromSession,
+  getDefaultActualWorkDurationSec,
+  getLatestCompletedProfileSession,
+  getProfileBpmTargets
+} from '../domain/shared/profile';
 import type {
   ComparisonRound,
   HeartRateSample,
@@ -15,10 +22,11 @@ import type {
   SessionProfile,
   SessionRecord,
   SessionStatus,
+  SettingsMode,
   WorkoutPhaseSegment
 } from '../domain/shared/types';
 import { deriveSessionIntegrity, filterPlausibleBpm, isCountdownActive, isSessionActive } from '../domain/session/lifecycle';
-import { createWorkoutPlan, getPhaseAtElapsedSec } from '../domain/workout/plan';
+import { createBpmWorkoutPlan, createWorkoutPlan, getPhaseAtElapsedSec } from '../domain/workout/plan';
 import { playCountdownAudio, playPhaseTransitionAudio } from '../infrastructure/audio/countdownAudio';
 import { CapacitorHeartRateMonitor } from '../infrastructure/bluetooth/capacitorHeartRateMonitor';
 import { MockHeartRateMonitor } from '../infrastructure/bluetooth/mockHeartRateMonitor';
@@ -46,11 +54,15 @@ export interface SessionRuntime {
   bpmPulseAt: number;
   scrubElapsedSec: number | null;
   actualWorkDurationSec: number;
+  phaseIndex: number;
+  phaseElapsedSec: number;
 }
 
 export interface ProfileDraft extends SessionProfile {
   isDirty: boolean;
 }
+
+export type { SettingsMode } from '../domain/shared/types';
 
 const deviceTestMode = new URLSearchParams(window.location.search).get('device-test') === '1';
 
@@ -65,7 +77,9 @@ const runtime = signal<SessionRuntime>({
   bpm: null,
   bpmPulseAt: 0,
   scrubElapsedSec: null,
-  actualWorkDurationSec: 20
+  actualWorkDurationSec: 20,
+  phaseIndex: 0,
+  phaseElapsedSec: 0
 });
 
 const profiles = signal<SessionProfile[]>([]);
@@ -75,6 +89,7 @@ const historyIndex = signal(0);
 const trendIndex = signal(0);
 const initialized = signal(false);
 const activeRoute = signal('/');
+const settingsMode = signal<SettingsMode>('duration');
 const draftProfileId = signal<string | null>(null);
 const profileDraft = signal<ProfileDraft | null>(null);
 const pendingProfileSwitchId = signal<string | null>(null);
@@ -138,6 +153,10 @@ monitor.onSample((incomingBpm) => {
     bpmPulseAt: Date.now(),
     samples: shouldPersist ? [...currentRuntime.samples, { elapsedSec, bpm }] : currentRuntime.samples
   };
+
+  if (shouldPersist && settingsMode.value === 'bpm') {
+    advanceBpmTargetPhase(bpm);
+  }
 });
 
 monitor.onDisconnect(() => {
@@ -169,6 +188,7 @@ async function persistSnapshot(): Promise<void> {
     sessions: sessions.value,
     settings: {
       selectedProfileId: selectedProfileId.value,
+      settingsMode: settingsMode.value,
       actualWorkDurationByProfileId: actualWorkDurationByProfileId.value
     }
   });
@@ -202,7 +222,11 @@ function getSelectedProfile(): SessionProfile {
 }
 
 const selectedProfile = computed(() => getSelectedProfile());
-const currentPlan = computed(() => createWorkoutPlan(selectedProfile.value, runtime.value.actualWorkDurationSec));
+const currentPlan = computed(() =>
+  settingsMode.value === 'bpm'
+    ? createBpmWorkoutPlan(selectedProfile.value)
+    : createWorkoutPlan(selectedProfile.value, runtime.value.actualWorkDurationSec)
+);
 const currentPhase = computed<WorkoutPhaseSegment | null>(() => {
   const status = runtime.value.status;
   if (status === 'idle' || status === 'connecting_hr' || status === 'ready') {
@@ -219,6 +243,10 @@ const currentPhase = computed<WorkoutPhaseSegment | null>(() => {
       durationSec: 4
     };
   }
+  if (settingsMode.value === 'bpm' && ['running', 'paused'].includes(status)) {
+    return currentPlan.value.phases[Math.max(0, Math.min(runtime.value.phaseIndex, currentPlan.value.phases.length - 1))] ?? null;
+  }
+
   return getPhaseAtElapsedSec(currentPlan.value, runtime.value.elapsedSec);
 });
 
@@ -296,6 +324,39 @@ function syncActualWorkDuration(): void {
   };
 }
 
+function hasConfiguredBpmTargets(profile: SessionProfile): boolean {
+  return (
+    profile.bpmTargets?.length === profile.baseRestsSec.length &&
+    profile.bpmTargets.every((target) => Number.isFinite(target.minBpm) && Number.isFinite(target.maxBpm))
+  );
+}
+
+function ensureBpmTargetsForProfile(profileId: string): void {
+  const profile = profiles.value.find((item) => item.id === profileId);
+  if (!profile || hasConfiguredBpmTargets(profile)) {
+    return;
+  }
+
+  const latestSession = getLatestCompletedProfileSession(profile.id, sessions.value);
+  if (!latestSession) {
+    return;
+  }
+
+  const nextProfile = {
+    ...profile,
+    bpmTargets: deriveBpmTargetsFromSession(profile, latestSession)
+  };
+
+  profiles.value = profiles.value.map((item) => (item.id === profile.id ? nextProfile : item));
+  if (draftProfileId.value === profile.id) {
+    profileDraft.value = {
+      ...nextProfile,
+      isDirty: profileDraft.value?.isDirty ?? false
+    };
+  }
+  void persistSnapshot();
+}
+
 function ensureReadyState(): void {
   runtime.value = {
     ...runtime.value,
@@ -321,7 +382,9 @@ function startTicking(): void {
           ...runtime.value,
           status: 'running',
           countdownRemainingSec: 3,
-          elapsedSec: 0
+          elapsedSec: 0,
+          phaseIndex: 0,
+          phaseElapsedSec: 0
         };
         await requestWakeLock();
       }
@@ -329,6 +392,11 @@ function startTicking(): void {
     }
 
     if (currentRuntime.status !== 'running') {
+      return;
+    }
+
+    if (settingsMode.value === 'bpm') {
+      await tickBpmMode(currentRuntime);
       return;
     }
 
@@ -354,6 +422,90 @@ function startTicking(): void {
       await finishSession('completed');
     }
   }, 1000);
+}
+
+async function tickBpmMode(currentRuntime: SessionRuntime): Promise<void> {
+  const plan = currentPlan.value;
+  const phaseIndex = Math.max(0, Math.min(currentRuntime.phaseIndex, plan.phases.length - 1));
+  const phase = plan.phases[phaseIndex];
+  if (!phase) {
+    await finishSession('completed');
+    return;
+  }
+
+  const nextElapsed = currentRuntime.elapsedSec + 1;
+  const nextPhaseElapsedSec = currentRuntime.phaseElapsedSec + 1;
+  const timedPhaseComplete = (phase.kind === 'warmup' || phase.kind === 'cooldown') && nextPhaseElapsedSec >= phase.durationSec;
+  const shouldAdvancePhase = timedPhaseComplete;
+
+  if (!shouldAdvancePhase) {
+    runtime.value = {
+      ...currentRuntime,
+      elapsedSec: nextElapsed,
+      phaseElapsedSec: nextPhaseElapsedSec,
+      scrubElapsedSec: null
+    };
+    return;
+  }
+
+  const nextPhaseIndex = phaseIndex + 1;
+  if (nextPhaseIndex >= plan.phases.length) {
+    runtime.value = {
+      ...currentRuntime,
+      elapsedSec: nextElapsed,
+      phaseElapsedSec: nextPhaseElapsedSec,
+      scrubElapsedSec: null
+    };
+    await finishSession('completed');
+    return;
+  }
+
+  lastPhaseCueKey = plan.phases[nextPhaseIndex]?.key ?? null;
+  void playPhaseTransitionAudio();
+  runtime.value = {
+    ...currentRuntime,
+    elapsedSec: nextElapsed,
+    phaseIndex: nextPhaseIndex,
+    phaseElapsedSec: 0,
+    scrubElapsedSec: null
+  };
+}
+
+function advanceBpmTargetPhase(bpm: number): void {
+  const currentRuntime = runtime.value;
+  if (currentRuntime.status !== 'running') {
+    return;
+  }
+
+  const plan = currentPlan.value;
+  const phaseIndex = Math.max(0, Math.min(currentRuntime.phaseIndex, plan.phases.length - 1));
+  const phase = plan.phases[phaseIndex];
+  const target = phase?.roundIndex ? getProfileBpmTargets(selectedProfile.value)[phase.roundIndex - 1] ?? null : null;
+  const reachedTarget =
+    phase?.kind === 'work'
+      ? target !== null && bpm >= target.maxBpm
+      : phase?.kind === 'rest'
+        ? target !== null && bpm <= target.minBpm
+        : false;
+
+  if (!reachedTarget) {
+    return;
+  }
+
+  const nextPhaseIndex = phaseIndex + 1;
+  if (nextPhaseIndex >= plan.phases.length) {
+    void finishSession('completed');
+    return;
+  }
+
+  lastPhaseCueKey = plan.phases[nextPhaseIndex]?.key ?? null;
+  void playPhaseTransitionAudio();
+  runtime.value = {
+    ...currentRuntime,
+    phaseIndex: nextPhaseIndex,
+    phaseElapsedSec: 0,
+    scrubElapsedSec: null
+  };
 }
 
 function stopTicking(): void {
@@ -382,6 +534,7 @@ async function finishSession(status: 'completed' | 'ended_early'): Promise<void>
     profileName: selectedProfile.value.name,
     profileSnapshot: selectedProfile.value,
     actualWorkDurationSec: runtime.value.actualWorkDurationSec,
+    settingsMode: settingsMode.value,
     status,
     isCompromised: integrity.isCompromised,
     hrCoverageComplete: integrity.hrCoverageComplete,
@@ -413,6 +566,7 @@ async function initialize(): Promise<void> {
     profiles.value = snapshot.profiles;
     sessions.value = reanalyzed.sessions;
     selectedProfileId.value = snapshot.settings.selectedProfileId || snapshot.profiles[0]?.id || '';
+    settingsMode.value = snapshot.settings.settingsMode ?? 'duration';
     actualWorkDurationByProfileId.value = snapshot.settings.actualWorkDurationByProfileId ?? {};
     historyIndex.value = 0;
     trendIndex.value = 0;
@@ -422,6 +576,9 @@ async function initialize(): Promise<void> {
     await persistSnapshot();
   }
   syncActualWorkDuration();
+  if (settingsMode.value === 'bpm' && selectedProfileId.value) {
+    ensureBpmTargetsForProfile(selectedProfileId.value);
+  }
 }
 
 function getHistorySessionIndex(sessionId: string): number {
@@ -435,6 +592,7 @@ export const appStore = {
   initialized,
   runtime,
   activeRoute,
+  settingsMode,
   profiles,
   sessions,
   selectedProfile,
@@ -474,6 +632,14 @@ export const appStore = {
 
   setRoute(path: string) {
     activeRoute.value = path;
+  },
+
+  setSettingsMode(mode: SettingsMode) {
+    if (mode === 'bpm') {
+      ensureBpmTargetsForProfile(selectedProfile.value.id);
+    }
+    settingsMode.value = mode;
+    void persistSnapshot();
   },
 
   async connectDevice() {
@@ -541,6 +707,8 @@ export const appStore = {
       status: 'idle',
       startedAt: null,
       elapsedSec: 0,
+      phaseIndex: 0,
+      phaseElapsedSec: 0,
       countdownRemainingSec: 3,
       isCompromised: false,
       hrCoverageComplete: true,
@@ -569,6 +737,8 @@ export const appStore = {
       status: 'countdown',
       startedAt: new Date().toISOString(),
       elapsedSec: 0,
+      phaseIndex: 0,
+      phaseElapsedSec: 0,
       countdownRemainingSec: 3,
       isCompromised: false,
       hrCoverageComplete: true,
@@ -637,6 +807,9 @@ export const appStore = {
   },
 
   beginEditingProfile(profileId: string) {
+    if (settingsMode.value === 'bpm') {
+      ensureBpmTargetsForProfile(profileId);
+    }
     const profile = profiles.value.find((item) => item.id === profileId);
     if (!profile) {
       return;
@@ -732,9 +905,12 @@ export const appStore = {
     }
     const nextBaseRestsSec = [...draft.baseRestsSec];
     nextBaseRestsSec.splice(index + 1, 0, nextBaseRestsSec[index] ?? 30);
+    const nextBpmTargets = getProfileBpmTargets(draft);
+    nextBpmTargets.splice(index + 1, 0, nextBpmTargets[index] ?? { minBpm: 1, maxBpm: draft.nominalPeakHeartrate });
     profileDraft.value = {
       ...draft,
       baseRestsSec: nextBaseRestsSec,
+      bpmTargets: nextBpmTargets,
       isDirty: true
     };
   },
@@ -746,9 +922,37 @@ export const appStore = {
     }
     const nextBaseRestsSec = [...draft.baseRestsSec];
     nextBaseRestsSec.splice(index, 1);
+    const nextBpmTargets = getProfileBpmTargets(draft);
+    nextBpmTargets.splice(index, 1);
     profileDraft.value = {
       ...draft,
       baseRestsSec: nextBaseRestsSec,
+      bpmTargets: nextBpmTargets,
+      isDirty: true
+    };
+  },
+
+  updateDraftBpmTarget(index: number, patch: { minBpm?: number; maxBpm?: number }) {
+    const draft = profileDraft.value;
+    if (!draft) {
+      return;
+    }
+    const nextTargets = getProfileBpmTargets(draft);
+    const current = nextTargets[index];
+    if (!current) {
+      return;
+    }
+    const requestedMax = Math.max(1, patch.maxBpm ?? current.maxBpm);
+    const requestedMin = Math.max(1, patch.minBpm ?? current.minBpm);
+    const nextMax = patch.maxBpm !== undefined ? Math.max(requestedMax, current.minBpm) : current.maxBpm;
+    const nextMin = patch.minBpm !== undefined ? Math.min(requestedMin, nextMax) : current.minBpm;
+    nextTargets[index] = {
+      minBpm: nextMin,
+      maxBpm: nextMax
+    };
+    profileDraft.value = {
+      ...draft,
+      bpmTargets: nextTargets,
       isDirty: true
     };
   },
@@ -771,6 +975,7 @@ export const appStore = {
       notes: draft.notes,
       workDurationSec: referenced ? original?.workDurationSec ?? draft.workDurationSec : draft.workDurationSec,
       nominalPeakHeartrate: referenced ? original?.nominalPeakHeartrate ?? draft.nominalPeakHeartrate : draft.nominalPeakHeartrate,
+      ...(draft.bpmTargets ? { bpmTargets: draft.bpmTargets } : {}),
       warmupSec: referenced ? original?.warmupSec ?? draft.warmupSec : draft.warmupSec,
       baseRestsSec: referenced ? original?.baseRestsSec ?? draft.baseRestsSec : draft.baseRestsSec,
       cooldownBaseSec: referenced ? original?.cooldownBaseSec ?? draft.cooldownBaseSec : draft.cooldownBaseSec
@@ -831,6 +1036,7 @@ export const appStore = {
       sessions: sessions.value,
       settings: {
         selectedProfileId: selectedProfileId.value,
+        settingsMode: settingsMode.value,
         actualWorkDurationByProfileId: actualWorkDurationByProfileId.value
       }
     };
@@ -853,6 +1059,7 @@ export const appStore = {
     profiles.value = payload.profiles;
     sessions.value = normalizedPayload.sessions;
     selectedProfileId.value = payload.settings.selectedProfileId;
+    settingsMode.value = payload.settings.settingsMode ?? 'duration';
     actualWorkDurationByProfileId.value = payload.settings.actualWorkDurationByProfileId ?? {};
     await replaceSnapshot(normalizedPayload);
     this.beginEditingProfile(selectedProfileId.value);

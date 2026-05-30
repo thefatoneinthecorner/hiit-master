@@ -1,4 +1,4 @@
-import type { HeartRateSample, RoundAnalysis, SessionProfile, WorkoutPlan } from '../../app/src/domain/shared/types';
+import type { HeartRateSample, RoundAnalysis, SessionProfile, SettingsMode, WorkoutPlan } from '../../app/src/domain/shared/types';
 
 export type LatestSessionReplayFixture = {
   latest: {
@@ -8,6 +8,7 @@ export type LatestSessionReplayFixture = {
     name: string;
     profileName: string;
     profileSnapshot: SessionProfile;
+    settingsMode?: SettingsMode;
     plan: WorkoutPlan;
     samples: HeartRateSample[];
     analysis: RoundAnalysis[];
@@ -27,6 +28,21 @@ const profileSnapshot: SessionProfile = {
   notes: '',
   workDurationSec: 30,
   nominalPeakHeartrate: 160,
+  bpmTargets: [
+    { maxBpm: 101, minBpm: 82 },
+    { maxBpm: 110, minBpm: 94 },
+    { maxBpm: 120, minBpm: 105 },
+    { maxBpm: 126, minBpm: 114 },
+    { maxBpm: 132, minBpm: 124 },
+    { maxBpm: 138, minBpm: 128 },
+    { maxBpm: 142, minBpm: 137 },
+    { maxBpm: 145, minBpm: 139 },
+    { maxBpm: 146, minBpm: 142 },
+    { maxBpm: 149, minBpm: 144 },
+    { maxBpm: 151, minBpm: 145 },
+    { maxBpm: 152, minBpm: 146 },
+    { maxBpm: 153, minBpm: 150 },
+  ],
   warmupSec: 300,
   baseRestsSec: [90, 75, 60, 45, 35, 30, 30, 30, 30, 30, 30, 30, 30],
   cooldownBaseSec: 180,
@@ -40,6 +56,7 @@ export const latestSessionReplayFixture: LatestSessionReplayFixture = {
     name: '24 May 2026, 12:43',
     profileName: 'Full Timer 2',
     profileSnapshot,
+    settingsMode: 'bpm',
     plan: {
       nominalWorkDurationSec: 30,
       actualWorkDurationSec: 29,
@@ -101,25 +118,25 @@ export const latestSessionReplayFixture: LatestSessionReplayFixture = {
       { elapsedSec: 329, bpm: 101 },
       { elapsedSec: 420, bpm: 82 },
       { elapsedSec: 449, bpm: 110 },
-      { elapsedSec: 525, bpm: 96 },
+      { elapsedSec: 525, bpm: 94 },
       { elapsedSec: 554, bpm: 120 },
-      { elapsedSec: 615, bpm: 108 },
+      { elapsedSec: 615, bpm: 105 },
       { elapsedSec: 644, bpm: 126 },
-      { elapsedSec: 690, bpm: 116 },
+      { elapsedSec: 690, bpm: 114 },
       { elapsedSec: 719, bpm: 132 },
-      { elapsedSec: 755, bpm: 126 },
+      { elapsedSec: 755, bpm: 124 },
       { elapsedSec: 784, bpm: 138 },
-      { elapsedSec: 815, bpm: 130 },
+      { elapsedSec: 815, bpm: 128 },
       { elapsedSec: 844, bpm: 142 },
-      { elapsedSec: 875, bpm: 139 },
+      { elapsedSec: 875, bpm: 137 },
       { elapsedSec: 904, bpm: 145 },
-      { elapsedSec: 935, bpm: 140 },
+      { elapsedSec: 935, bpm: 139 },
       { elapsedSec: 964, bpm: 146 },
-      { elapsedSec: 995, bpm: 144 },
+      { elapsedSec: 995, bpm: 142 },
       { elapsedSec: 1024, bpm: 149 },
       { elapsedSec: 1055, bpm: 145 },
       { elapsedSec: 1084, bpm: 151 },
-      { elapsedSec: 1115, bpm: 146 },
+      { elapsedSec: 1115, bpm: 145 },
       { elapsedSec: 1144, bpm: 152 },
       { elapsedSec: 1175, bpm: 149 },
       { elapsedSec: 1204, bpm: 153 },

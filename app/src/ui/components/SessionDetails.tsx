@@ -7,9 +7,9 @@ interface SessionDetailsProps {
   onToggle: () => void;
   timeRemaining: string;
   bpm: string | number;
-  remainingValue: string;
+  remainingValue?: string | null;
   primaryTitle?: string;
-  remainingTitle?: string;
+  remainingTitle?: string | null;
   label?: string;
   controls?: string;
   pulseActive?: boolean;
@@ -23,9 +23,9 @@ export function SessionDetails({
   onToggle,
   timeRemaining,
   bpm,
-  remainingValue,
+  remainingValue = null,
   primaryTitle = 'Session',
-  remainingTitle = 'Remaining',
+  remainingTitle = null,
   label,
   controls,
   pulseActive = false,
@@ -33,6 +33,8 @@ export function SessionDetails({
   pulseBeatKey,
   class: className = ''
 }: SessionDetailsProps) {
+  const hasRemainingDetails = remainingTitle !== null || remainingValue !== null;
+
   return (
     <div
       class={`rounded-[1.8rem] border border-[color:var(--line)] bg-[color:var(--panel)] px-5 py-4 ${className}`}
@@ -56,8 +58,12 @@ export function SessionDetails({
             </DisclosureToggle>
           </span>
         }
-        secondaryTitle={remainingTitle}
-        secondaryContent={<span class="text-4xl font-semibold leading-none">{remainingValue}</span>}
+        {...(hasRemainingDetails
+          ? {
+            secondaryTitle: remainingTitle,
+            secondaryContent: remainingValue !== null ? <span class="text-4xl font-semibold leading-none">{remainingValue}</span> : null,
+          }
+          : {})}
       >
         <span class="grid w-full grid-cols-3 items-center text-5xl font-semibold leading-none" data-testid="session-details-row">
           <span class="justify-self-end" data-testid="session-details-time">{timeRemaining}</span>

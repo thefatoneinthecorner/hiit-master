@@ -6,6 +6,7 @@
 
 ## Inputs
 
+- `settingsMode`: Application settings mode. Defaults to `duration`.
 - `title`: Optional heading displayed at the top of the stack.
 - `roundName`, `countdownSeconds`, `remainingSeconds`, `bpm`, `pulseActive`, `pulseBeating`, and `pulseBeatKey`: Values rendered through `SessionDetails`.
 - `sensorName`, `batteryPercent`, `playing`, `onBluetooth`, `onPlay`, `onPause`, and `onStop`: Values passed to `SessionController`.
@@ -27,6 +28,9 @@
 - The next row contains `SessionController` in a `CollapsiblePanel`.
 - The session controller row is initially visible unless `sessionControllerVisible` is false.
 - The rows below the sensor details are `HeartGraph` and `RecoveryHistogram`.
+- The `RecoveryHistogram` is suppressed when `settingsMode` is `bpm`.
+- When `settingsMode` is `bpm`, `SessionDisplay` does not pass a remaining title or remaining value to `SessionDetails`.
+- BPM-mode phase progression is owned by the application store; `SessionDisplay` only renders the supplied phase and timing values.
 - Live-session replay data must pass `scrubElapsedSec: null` so the history scrubber is not displayed.
 - The embedded `HeartGraph` uses duration-based x scaling so the heart-rate line keeps a stable session timeline while live samples arrive.
 - The embedded `RecoveryHistogram` receives only recovery rounds that are visible at the current replay elapsed time, so it starts empty and fills as recoveries complete.
@@ -68,6 +72,8 @@
 The component must have Storybook stories for:
 
 - Active Session
+- Active Session BPM Mode
+- Running BPM Mode
 - Controller Initially Hidden
 - Latest Session Replay
 

@@ -5,9 +5,10 @@ interface StepperProps {
   onChange: (next: number) => void;
   min?: number;
   disabled?: boolean;
+  suffix?: string;
 }
 
-export function Stepper({ value, onChange, min = 1, disabled = false }: StepperProps) {
+export function Stepper({ value, onChange, min = 1, disabled = false, suffix = 's' }: StepperProps) {
   const repeatTimerRef = useRef<number | null>(null);
   const holdDelayRef = useRef<number | null>(null);
   const valueRef = useRef(value);
@@ -165,7 +166,7 @@ export function Stepper({ value, onChange, min = 1, disabled = false }: StepperP
       >
         -
       </button>
-      <div class="min-w-16 text-center text-lg font-semibold">{value}s</div>
+      <div class="min-w-20 text-center text-lg font-semibold">{formatStepperValue(value, suffix)}</div>
       <button
         class={buttonClass}
         disabled={disabled}
@@ -179,4 +180,12 @@ export function Stepper({ value, onChange, min = 1, disabled = false }: StepperP
       </button>
     </div>
   );
+}
+
+function formatStepperValue(value: number, suffix: string) {
+  if (!suffix) {
+    return String(value);
+  }
+
+  return suffix === 's' ? `${value}s` : `${value} ${suffix}`;
 }

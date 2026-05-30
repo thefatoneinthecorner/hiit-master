@@ -5,6 +5,7 @@ import {
   buildReplayRecoveryAnalysis,
   getReplayRecoveryVisibleRoundIndexes
 } from '../../app/src/domain/comparison/comparison';
+import { getProfileBpmTargets } from '../../app/src/domain/shared/profile';
 import type { HeartRateSample } from '../../app/src/domain/shared/types';
 import type { LatestSessionReplayFixture } from '../fixtures/latestSessionReplay';
 
@@ -68,6 +69,87 @@ function getRoundRecoveryPhaseEndElapsedSec(
   return analysis.find((round) => round.roundIndex === roundIndex)?.recoveryWindowEndSec ?? plan.totalDurationSec;
 }
 
+function getReplayTargetBpm(
+  fixture: LatestSessionReplayFixture['latest'],
+  phase: LatestSessionReplayFixture['latest']['plan']['phases'][number] | undefined
+): number | null {
+  if (fixture.settingsMode !== 'bpm' || !phase?.roundIndex || (phase.kind !== 'work' && phase.kind !== 'rest')) {
+    return null;
+  }
+
+  const target = getProfileBpmTargets(fixture.profileSnapshot)[phase.roundIndex - 1];
+  if (!target) {
+    return null;
+  }
+
+  return phase.kind === 'work' ? target.maxBpm : target.minBpm;
+}
+
+function getDurationReplayPhaseState(fixture: LatestSessionReplayFixture['latest'], elapsedSec: number) {
+  const totalDurationSec = fixture.plan.totalDurationSec;
+  const phase =
+    fixture.plan.phases.find((item) => elapsedSec >= item.startSec && elapsedSec < item.endSec) ??
+    fixture.plan.phases.at(-1);
+
+  return {
+    phase,
+    countdownSeconds: Math.max(0, (phase?.endSec ?? totalDurationSec) - elapsedSec)
+  };
+}
+
+function getBpmReplayPhaseState(
+  fixture: LatestSessionReplayFixture['latest'],
+  samples: HeartRateSample[],
+  elapsedSec: number
+) {
+  const warmupPhase = fixture.plan.phases.find((phase) => phase.kind === 'warmup');
+  if (!warmupPhase || elapsedSec < warmupPhase.durationSec) {
+    return {
+      phase: warmupPhase,
+      countdownSeconds: Math.max(0, (warmupPhase?.durationSec ?? fixture.profileSnapshot.warmupSec) - elapsedSec)
+    };
+  }
+
+  const targetPhases = fixture.plan.phases.filter((phase) => phase.kind === 'work' || phase.kind === 'rest');
+  let targetPhaseIndex = 0;
+  let cooldownStartSec: number | null = null;
+
+  for (let second = Math.max(0, warmupPhase.durationSec); second <= elapsedSec; second += 1) {
+    const phase = targetPhases[targetPhaseIndex];
+    const bpm = samples[second]?.bpm ?? null;
+    const target = getReplayTargetBpm(fixture, phase);
+
+    if (!phase || bpm === null || target === null) {
+      continue;
+    }
+
+    const reachedTarget = phase.kind === 'work' ? bpm >= target : bpm <= target;
+    if (!reachedTarget) {
+      continue;
+    }
+
+    targetPhaseIndex += 1;
+    if (targetPhaseIndex >= targetPhases.length) {
+      cooldownStartSec = second;
+      break;
+    }
+  }
+
+  if (cooldownStartSec !== null) {
+    const cooldownPhase = fixture.plan.phases.find((phase) => phase.kind === 'cooldown');
+    return {
+      phase: cooldownPhase,
+      countdownSeconds: Math.max(0, fixture.profileSnapshot.cooldownBaseSec - (elapsedSec - cooldownStartSec))
+    };
+  }
+
+  const phase = targetPhases[Math.min(targetPhaseIndex, targetPhases.length - 1)] ?? fixture.plan.phases.at(-1);
+  return {
+    phase,
+    countdownSeconds: 0
+  };
+}
+
 export function useSessionReplay(
   fixture: LatestSessionReplayFixture,
   { loop = true, tickMs = 1000 }: UseSessionReplayOptions = {}
@@ -84,17 +166,17 @@ export function useSessionReplay(
   const { latest, previousComparable } = fixture;
   const totalDurationSec = latest.plan.totalDurationSec;
 
-  const advanceElapsed = () => {
+  const advanceElapsed = (stepSec = 1) => {
     setElapsedSec((current) => {
       if (current >= totalDurationSec) {
         return loop ? 0 : totalDurationSec;
       }
 
-      return current + 1;
+      return Math.min(totalDurationSec, current + stepSec);
     });
   };
-  const reverseElapsed = () => {
-    setElapsedSec((current) => Math.max(0, current - 1));
+  const reverseElapsed = (stepSec = 1) => {
+    setElapsedSec((current) => Math.max(0, current - stepSec));
   };
 
   useEffect(() => {
@@ -166,9 +248,9 @@ export function useSessionReplay(
     let animationFrameId = 0;
     const advance = () => {
       if (scrubDirection === 1) {
-        advanceElapsed();
+        advanceElapsed(5);
       } else {
-        reverseElapsed();
+        reverseElapsed(5);
       }
       animationFrameId = window.requestAnimationFrame(advance);
     };
@@ -183,9 +265,10 @@ export function useSessionReplay(
     [elapsedSec, latest.samples]
   );
   const currentSample = samples.at(-1);
-  const currentPhase =
-    latest.plan.phases.find((phase) => elapsedSec >= phase.startSec && elapsedSec < phase.endSec) ??
-    latest.plan.phases.at(-1);
+  const phaseState = latest.settingsMode === 'bpm'
+    ? getBpmReplayPhaseState(latest, samples, elapsedSec)
+    : getDurationReplayPhaseState(latest, elapsedSec);
+  const currentPhase = phaseState.phase;
   const currentBpm = currentSample?.bpm ?? null;
   const roundEndElapsedSec = latest.plan.rounds.map((round) =>
     getRoundRecoveryPhaseEndElapsedSec(latest.plan, latest.analysis, round.roundIndex)
@@ -239,9 +322,11 @@ export function useSessionReplay(
   }, [currentRecoveryMaxAbs, elapsedSec]);
 
   return {
+    settingsMode: latest.settingsMode ?? 'duration',
     title: latest.name,
     roundName: formatReplayPhaseLabel(currentPhase, latest.name),
-    countdownSeconds: Math.max(0, (currentPhase?.endSec ?? totalDurationSec) - elapsedSec),
+    countdownSeconds: phaseState.countdownSeconds,
+    targetBpm: getReplayTargetBpm(latest, currentPhase),
     remainingSeconds: Math.max(0, totalDurationSec - elapsedSec),
     timingEmphasis: currentPhase?.kind === 'work' ? 'work' as const : 'recovery' as const,
     bpm: currentBpm,

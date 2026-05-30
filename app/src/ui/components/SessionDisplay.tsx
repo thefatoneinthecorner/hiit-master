@@ -8,9 +8,11 @@ import { SessionController } from './SessionController';
 import { SessionDetails } from './SessionDetails';
 
 interface SessionDisplayProps {
+  settingsMode?: 'duration' | 'bpm';
   title?: string;
   roundName: string;
   countdownSeconds: number;
+  targetBpm?: number | null;
   remainingSeconds: number;
   timingEmphasis?: 'work' | 'recovery';
   bpm: number | null;
@@ -38,9 +40,11 @@ interface SessionDisplayProps {
 }
 
 export function SessionDisplay({
+  settingsMode = 'duration',
   title,
   roundName,
   countdownSeconds,
+  targetBpm = null,
   remainingSeconds,
   timingEmphasis = 'recovery',
   bpm,
@@ -68,6 +72,9 @@ export function SessionDisplay({
 }: SessionDisplayProps) {
   const [sessionControllerOpen, setSessionControllerOpen] = useState(sessionControllerVisible);
   const sessionControllerPanelId = 'session-display-session-controller';
+  const primaryValue = settingsMode === 'bpm' && targetBpm !== null
+    ? String(targetBpm)
+    : formatSessionDisplaySeconds(countdownSeconds);
 
   return (
     <section
@@ -78,15 +85,19 @@ export function SessionDisplay({
       <SessionDetails
         open={sessionControllerOpen}
         onToggle={() => setSessionControllerOpen((current) => !current)}
-        timeRemaining={formatSessionDisplaySeconds(countdownSeconds)}
+        timeRemaining={primaryValue}
         bpm={bpm ?? '--'}
-        remainingValue={formatSessionDisplaySeconds(remainingSeconds)}
         primaryTitle={roundName}
-        remainingTitle="Remaining"
         label={sessionControllerOpen ? 'Hide session controller' : 'Show session controller'}
         controls={sessionControllerPanelId}
         pulseActive={pulseActive}
         pulseBeating={pulseBeating}
+        {...(settingsMode === 'duration'
+          ? {
+            remainingTitle: 'Remaining',
+            remainingValue: formatSessionDisplaySeconds(remainingSeconds),
+          }
+          : {})}
         {...(pulseBeatKey !== undefined ? { pulseBeatKey } : {})}
       />
       <div id={sessionControllerPanelId} data-testid="session-display-session-controller">
@@ -111,16 +122,18 @@ export function SessionDisplay({
         timeScale="duration"
         {...(onOpenHistory ? { onClick: onOpenHistory } : {})}
       />
-      <RecoveryHistogram
-        rounds={recoveryRounds}
-        {...(roundDurationsSec ? { roundDurationsSec } : {})}
-        {...(roundEndElapsedSec ? { roundEndElapsedSec, timelineDurationSec: totalDurationSec } : {})}
-        scrubElapsedSec={scrubElapsedSec}
-        heightClassName="h-20"
-        showEmptyState
-        {...(recoveryScaleMaxAbs !== undefined ? { scaleMaxAbs: recoveryScaleMaxAbs } : {})}
-        {...(onOpenHistory ? { onClick: onOpenHistory } : {})}
-      />
+      {settingsMode === 'duration' ? (
+        <RecoveryHistogram
+          rounds={recoveryRounds}
+          {...(roundDurationsSec ? { roundDurationsSec } : {})}
+          {...(roundEndElapsedSec ? { roundEndElapsedSec, timelineDurationSec: totalDurationSec } : {})}
+          scrubElapsedSec={scrubElapsedSec}
+          heightClassName="h-20"
+          showEmptyState
+          {...(recoveryScaleMaxAbs !== undefined ? { scaleMaxAbs: recoveryScaleMaxAbs } : {})}
+          {...(onOpenHistory ? { onClick: onOpenHistory } : {})}
+        />
+      ) : null}
     </section>
   );
 }

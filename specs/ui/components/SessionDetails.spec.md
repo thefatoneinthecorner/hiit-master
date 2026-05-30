@@ -10,9 +10,9 @@
 - `onToggle`: Called when the component is activated.
 - `timeRemaining`: Current round or interval time remaining.
 - `bpm`: Current heart-rate value.
-- `remainingValue`: Remaining session time value.
+- `remainingValue`: Optional remaining session time value.
 - `primaryTitle`: Optional first-row title, defaulting to `Session`.
-- `remainingTitle`: Optional secondary title, defaulting to `Remaining`.
+- `remainingTitle`: Optional secondary title.
 - `label`: Optional accessible toggle label. Defaults from the open state.
 - `controls`: Optional id of the controlled panel.
 - `pulseActive`: Whether the pulse is shown as active.
@@ -33,7 +33,8 @@
   - pulse
   - BPM value
 - The pulse column is in the exact horizontal center of the row.
-- The secondary title and value show the remaining session time.
+- The secondary title and value show the remaining session time when provided.
+- When both `remainingTitle` and `remainingValue` are omitted, no secondary title/value row is rendered.
 
 ## Behavior
 

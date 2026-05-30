@@ -10,16 +10,24 @@ export type SessionStatus =
   | 'error';
 
 export type WorkoutPhaseKind = 'countdown' | 'warmup' | 'work' | 'rest' | 'cooldown';
+export type SettingsMode = 'duration' | 'bpm';
 
+/** An exercise profile */
 export interface SessionProfile {
   id: string;
   name: string;
   workDurationSec: number;
   nominalPeakHeartrate: number;
-  warmupSec: number;
+  bpmTargets?: BPMRoundTarget[];
+  warmupSec: number; /** in seconds */
   baseRestsSec: number[];
   cooldownBaseSec: number;
   notes: string;
+}
+
+export interface BPMRoundTarget {
+  minBpm: number;
+  maxBpm: number;
 }
 
 export interface WorkoutRoundPlan {
@@ -72,6 +80,7 @@ export interface SessionRecord {
   profileName: string;
   profileSnapshot: SessionProfile;
   actualWorkDurationSec: number;
+  settingsMode?: SettingsMode;
   status: Extract<SessionStatus, 'completed' | 'ended_early'>;
   isCompromised: boolean;
   hrCoverageComplete: boolean;

@@ -1,11 +1,13 @@
 import { appStore } from '../../application/store';
-import type { SessionRuntime } from '../../application/store';
+import type { SessionRuntime, SettingsMode } from '../../application/store';
+import { getProfileBpmTargets } from '../../domain/shared/profile';
 import type { ComparisonRound, SessionProfile, WorkoutPhaseSegment, WorkoutPlan } from '../../domain/shared/types';
 import { HeartGraph } from '../components/HeartGraph';
 import { Pulse } from '../components/Pulse';
 import { RecoveryHistogram } from '../components/RecoveryHistogram';
 import { RoundTiming } from '../components/RoundTiming';
 import { SessionDisplay } from '../components/SessionDisplay';
+import { SliderToggle } from '../components/SliderToggle';
 import { WheelPicker } from '../components/WheelPicker';
 
 function formatPhaseSeconds(seconds: number) {
@@ -46,6 +48,19 @@ function getPhaseEmphasisClass(phase: WorkoutPhaseSegment | null): string {
   return phase?.kind === 'work' ? 'text-[color:var(--danger)]' : 'text-[color:var(--accent)]';
 }
 
+function getBpmPhaseTarget(profile: SessionProfile, phase: WorkoutPhaseSegment | null): number | null {
+  if (!phase?.roundIndex || (phase.kind !== 'work' && phase.kind !== 'rest')) {
+    return null;
+  }
+
+  const target = getProfileBpmTargets(profile)[phase.roundIndex - 1];
+  if (!target) {
+    return null;
+  }
+
+  return phase.kind === 'work' ? target.maxBpm : target.minBpm;
+}
+
 function getRoundEndElapsedSec(plan: WorkoutPlan): number[] {
   return plan.rounds.map((round) => {
     const restPhase = plan.phases.find((phase) => phase.kind === 'rest' && phase.roundIndex === round.roundIndex);
@@ -67,6 +82,8 @@ interface HomeScreenViewProps {
   onConnectDevice: () => void;
   onReconnectDevice: () => void;
   onSetActualWorkDuration: (value: number) => void;
+  settingsMode: SettingsMode;
+  onSetSettingsMode: (value: SettingsMode) => void;
   onStartSession: () => void;
   onTogglePauseResume: () => void;
   onStopSession: () => void;
@@ -86,6 +103,8 @@ export function HomeScreenView({
   onConnectDevice,
   onReconnectDevice,
   onSetActualWorkDuration,
+  settingsMode,
+  onSetSettingsMode,
   onStartSession,
   onTogglePauseResume,
   onStopSession,
@@ -95,15 +114,29 @@ export function HomeScreenView({
   const phaseRemaining =
     runtime.status === 'countdown'
       ? runtime.countdownRemainingSec
-      : phase
-        ? Math.max(0, phase.endSec - runtime.elapsedSec)
-        : 0;
+      : settingsMode === 'bpm' && phase && (phase.kind === 'warmup' || phase.kind === 'cooldown')
+        ? Math.max(0, phase.durationSec - runtime.phaseElapsedSec)
+        : settingsMode === 'bpm'
+          ? 0
+          : phase
+            ? Math.max(0, phase.endSec - runtime.elapsedSec)
+            : 0;
 
   const remaining = Math.max(0, plan.totalDurationSec - runtime.elapsedSec);
+  const targetBpm = settingsMode === 'bpm' ? getBpmPhaseTarget(profile, phase) : null;
 
   if (runtime.status === 'idle' || runtime.status === 'connecting_hr') {
     return (
-      <section class="screen-nonscroll flex flex-col items-center justify-center">
+      <section class="screen-nonscroll flex flex-col items-center justify-center gap-6">
+        <SliderToggle
+          label="Settings mode"
+          value={settingsMode}
+          options={[
+            { value: 'duration', label: 'Duration' },
+            { value: 'bpm', label: 'BPM' },
+          ]}
+          onChange={(value) => onSetSettingsMode(value as SettingsMode)}
+        />
         <button
           type="button"
           onClick={onConnectDevice}
@@ -131,17 +164,19 @@ export function HomeScreenView({
             <span>{runtime.bpm ?? '--'}</span>
           </div>
         </div>
-        <div class="rounded-[1.6rem] border border-[color:var(--line)] bg-[color:var(--panel)] p-5">
-          <div class="mb-4 text-center text-sm uppercase tracking-[0.16em] text-[color:var(--muted)]">Actual Work Duration</div>
-          <div class="flex justify-center">
-            <WheelPicker
-              value={runtime.actualWorkDurationSec}
-              min={Math.max(5, profile.workDurationSec - 20)}
-              max={profile.workDurationSec + 10}
-              onChange={onSetActualWorkDuration}
-            />
+        {settingsMode === 'duration' ? (
+          <div class="rounded-[1.6rem] border border-[color:var(--line)] bg-[color:var(--panel)] p-5">
+            <div class="mb-4 text-center text-sm uppercase tracking-[0.16em] text-[color:var(--muted)]">Actual Work Duration</div>
+            <div class="flex justify-center">
+              <WheelPicker
+                value={runtime.actualWorkDurationSec}
+                min={Math.max(5, profile.workDurationSec - 20)}
+                max={profile.workDurationSec + 10}
+                onChange={onSetActualWorkDuration}
+              />
+            </div>
           </div>
-        </div>
+        ) : null}
         {showNoComparableSessionWarning ? (
           <div
             role="status"
@@ -167,6 +202,7 @@ export function HomeScreenView({
         <SessionDisplay
           roundName={getSessionDisplayRoundName(phase)}
           countdownSeconds={phaseRemaining}
+          targetBpm={targetBpm}
           remainingSeconds={remaining}
           timingEmphasis={phase?.kind === 'work' ? 'work' : 'recovery'}
           bpm={runtime.bpm}
@@ -181,6 +217,7 @@ export function HomeScreenView({
           onPause={onTogglePauseResume}
           onStop={onStopSession}
           samples={runtime.samples}
+          settingsMode={settingsMode}
           totalDurationSec={plan.totalDurationSec}
           nominalPeakHeartrate={profile.nominalPeakHeartrate}
           scrubElapsedSec={runtime.status === 'completed' ? runtime.scrubElapsedSec : null}
@@ -261,6 +298,8 @@ export function HomeScreen() {
       onConnectDevice={() => appStore.connectDevice()}
       onReconnectDevice={() => appStore.reconnectDevice()}
       onSetActualWorkDuration={(value) => appStore.setActualWorkDuration(value)}
+      settingsMode={appStore.settingsMode.value}
+      onSetSettingsMode={(value) => appStore.setSettingsMode(value)}
       onStartSession={() => appStore.startSession()}
       onTogglePauseResume={() => appStore.togglePauseResume()}
       onStopSession={() => appStore.stopSessionAndDisconnect()}

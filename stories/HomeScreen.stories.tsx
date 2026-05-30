@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/preact-vite';
 import { expect, fn, userEvent } from 'storybook/test';
 
 import '../app/src/styles.css';
-import type { SessionRuntime } from '../app/src/application/store';
+import type { SessionRuntime, SettingsMode } from '../app/src/application/store';
 import { STARTER_PROFILE } from '../app/src/domain/shared/profile';
 import type { ComparisonRound, HeartRateSample, WorkoutPhaseSegment } from '../app/src/domain/shared/types';
 import { createWorkoutPlan, getPhaseAtElapsedSec } from '../app/src/domain/workout/plan';
@@ -19,6 +19,8 @@ type HomeScreenArgs = {
   onConnectDevice: () => void;
   onReconnectDevice: () => void;
   onSetActualWorkDuration: (value: number) => void;
+  settingsMode: SettingsMode;
+  onSetSettingsMode: (value: SettingsMode) => void;
   onStartSession: () => void;
   onTogglePauseResume: () => void;
   onStopSession: () => void;
@@ -57,6 +59,8 @@ const baseRuntime: SessionRuntime = {
   bpmPulseAt: 0,
   scrubElapsedSec: null,
   actualWorkDurationSec: 20,
+  phaseIndex: 0,
+  phaseElapsedSec: 20,
 };
 
 function renderHomeScreen(args: HomeScreenArgs) {
@@ -74,6 +78,8 @@ function renderHomeScreen(args: HomeScreenArgs) {
         onConnectDevice={args.onConnectDevice}
         onReconnectDevice={args.onReconnectDevice}
         onSetActualWorkDuration={args.onSetActualWorkDuration}
+        settingsMode={args.settingsMode}
+        onSetSettingsMode={args.onSetSettingsMode}
         onStartSession={args.onStartSession}
         onTogglePauseResume={args.onTogglePauseResume}
         onStopSession={args.onStopSession}
@@ -106,11 +112,16 @@ const meta = {
     onConnectDevice: fn(),
     onReconnectDevice: fn(),
     onSetActualWorkDuration: fn(),
+    settingsMode: 'duration',
+    onSetSettingsMode: fn(),
     onStartSession: fn(),
     onTogglePauseResume: fn(),
     onStopSession: fn(),
     onOpenCompletedSessionInHistory: fn(),
     onSetScrubElapsedSec: fn(),
+  },
+  argTypes: {
+    settingsMode: { control: 'radio', options: ['duration', 'bpm'] },
   },
 } satisfies Meta<HomeScreenArgs>;
 
@@ -133,6 +144,11 @@ export const Idle: Story = {
     showNoComparableSessionWarning: false,
   },
   play: async ({ args, canvas }) => {
+    await expect(canvas.getByRole('group', { name: 'Settings mode' })).toBeVisible();
+    await expect(canvas.getByRole('button', { name: 'Duration' })).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(canvas.getByRole('button', { name: 'BPM' }));
+    await expect(args.onSetSettingsMode).toHaveBeenCalledWith('bpm');
+
     await userEvent.click(canvas.getByRole('button', { name: 'Connect' }));
 
     await expect(args.onConnectDevice).toHaveBeenCalledTimes(1);
@@ -158,9 +174,32 @@ export const Ready: Story = {
     await expect(canvas.getByText(profile.name)).toBeVisible();
     await expect(canvas.getByText('♥')).toBeVisible();
     await expect(canvas.getByText('72')).toBeVisible();
+    await expect(canvas.getByText('Actual Work Duration')).toBeVisible();
     await userEvent.click(canvas.getByRole('button', { name: 'Start' }));
 
     await expect(args.onStartSession).toHaveBeenCalledTimes(1);
+  },
+};
+
+export const ReadyBpmMode: Story = {
+  args: {
+    runtime: {
+      ...baseRuntime,
+      status: 'ready',
+      startedAt: null,
+      elapsedSec: 0,
+      samples: [],
+      bpm: 72,
+    },
+    phase: null,
+    homeComparison: [],
+    showNoComparableSessionWarning: false,
+    settingsMode: 'bpm',
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText('Selected Profile')).toBeVisible();
+    await expect(canvas.getByText(profile.name)).toBeVisible();
+    await expect(canvas.queryByText('Actual Work Duration')).not.toBeInTheDocument();
   },
 };
 
@@ -190,6 +229,7 @@ export const Running: Story = {
     await expect(canvas.queryByText('Active Session')).not.toBeInTheDocument();
     await expect(canvas.getByText('Round 1: Rest')).toBeVisible();
     await expect(canvas.getByText('156')).toBeVisible();
+    await expect(canvas.getByTestId('recovery-histogram-magnitude')).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Show session controller' })).toHaveAttribute('aria-expanded', 'false');
     await userEvent.click(canvas.getByRole('button', { name: 'Show session controller' }));
     await expect(canvas.getByText('Polar H10')).toBeVisible();
@@ -198,6 +238,19 @@ export const Running: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Pause' }));
 
     await expect(args.onTogglePauseResume).toHaveBeenCalledTimes(1);
+  },
+};
+
+export const RunningBpmMode: Story = {
+  args: {
+    settingsMode: 'bpm',
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.queryByText('Active Session')).not.toBeInTheDocument();
+    await expect(canvas.getByText('Round 1: Rest')).toBeVisible();
+    await expect(canvas.getByText('156')).toBeVisible();
+    await expect(canvas.queryByTestId('recovery-histogram-magnitude')).not.toBeInTheDocument();
+    await expect(canvas.getByRole('button', { name: 'Show session controller' })).toHaveAttribute('aria-expanded', 'false');
   },
 };
 

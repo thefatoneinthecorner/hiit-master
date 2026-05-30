@@ -116,15 +116,13 @@ export const LiveBPM: Story = {
   ),
   play: async ({ canvas }) => {
     const primaryTitle = canvas.getByTestId('session-details-primary-title');
-    const secondaryTitle = canvas.getByTestId('session-details-secondary-title');
-    const secondaryContent = canvas.getByTestId('session-details-secondary-content');
 
     await expect(canvas.getByText('Live BPM')).toBeVisible();
     await expect(canvas.getByText('♥')).toBeVisible();
     await expect(canvas.getByText('156')).toBeVisible();
     assertTitleTypography(primaryTitle);
-    await expect(secondaryTitle).toBeInTheDocument();
-    await expect(secondaryContent).toBeInTheDocument();
+    await expect(canvas.queryByTestId('session-details-secondary-title')).not.toBeInTheDocument();
+    await expect(canvas.queryByTestId('session-details-secondary-content')).not.toBeInTheDocument();
   },
 };
 

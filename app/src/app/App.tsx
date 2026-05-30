@@ -2,11 +2,16 @@ import { useEffect } from 'preact/hooks';
 import { LocationProvider, Route, Router, useLocation } from 'preact-iso';
 import { appStore } from '../application/store';
 import { TabBar } from '../ui/components/TabBar';
+import { BPMSettingsScreen } from '../ui/screens/BPMSettingsScreen';
 import { DevicesScreen } from '../ui/screens/DevicesScreen';
 import { HistoryScreen } from '../ui/screens/HistoryScreen';
 import { HomeScreen } from '../ui/screens/HomeScreen';
 import { SettingsScreen } from '../ui/screens/SettingsScreen';
 import { TrendScreen } from '../ui/screens/TrendScreen';
+
+function SettingsRoute() {
+  return appStore.settingsMode.value === 'bpm' ? <BPMSettingsScreen /> : <SettingsScreen />;
+}
 
 function Shell() {
   const location = useLocation();
@@ -50,7 +55,7 @@ function Shell() {
             <Route path="/devices" component={DevicesScreen} />
             <Route path="/trend" component={TrendScreen} />
             <Route path="/history" component={HistoryScreen} />
-            <Route path="/settings" component={SettingsScreen} />
+            <Route path="/settings" component={SettingsRoute} />
           </Router>
         </div>
       </main>

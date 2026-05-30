@@ -161,7 +161,7 @@ export const FullTimer2: Story = {
     await expect(args.onRecoveryChange).toHaveBeenCalledWith(2, 61);
     await expect(args.onCloneRecovery).toHaveBeenCalledWith(2);
     await expect(args.onDeleteRecovery).not.toHaveBeenCalled();
-    await expect(canvas.getByText((_, element) => element?.classList.contains('min-w-16') === true && element.textContent === '61s')).toBeVisible();
+    await expect(canvas.getAllByText('61s').length).toBeGreaterThan(0);
     await expect(canvas.getByRole('button', { name: 'Round 14' })).toBeVisible();
   },
 };

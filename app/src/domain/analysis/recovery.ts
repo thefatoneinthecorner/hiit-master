@@ -33,6 +33,21 @@ function findPhaseWindow(
   };
 }
 
+function findOptionalPhaseWindow(
+  plan: WorkoutPlan,
+  kind: 'work' | 'rest' | 'cooldown',
+  roundIndex: number
+): { startSec: number; endSec: number } | null {
+  const phase = plan.phases.find((item) => item.kind === kind && item.roundIndex === roundIndex);
+
+  return phase
+    ? {
+      startSec: phase.startSec,
+      endSec: phase.endSec
+    }
+    : null;
+}
+
 function getLastTwoKnownTroughTimes(analyses: RoundAnalysis[]): number[] {
   return analyses
     .filter((analysis) => analysis.trough !== null)
@@ -47,7 +62,7 @@ export function analyzeSessionRounds(plan: WorkoutPlan, samples: HeartRateSample
     const workWindow = findPhaseWindow(plan, 'work', round.roundIndex);
     const isFinalRound = round.roundIndex === plan.rounds.length;
     const restWindow = isFinalRound
-      ? findPhaseWindow(plan, 'cooldown', round.roundIndex)
+      ? findOptionalPhaseWindow(plan, 'rest', round.roundIndex) ?? findPhaseWindow(plan, 'cooldown', round.roundIndex)
       : findPhaseWindow(plan, 'rest', round.roundIndex);
     const peak = maxBpmInWindow(samples, workWindow.startSec, restWindow.endSec);
 

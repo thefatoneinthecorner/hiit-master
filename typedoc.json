@@ -1,0 +1,7 @@
+{
+  "entryPoints": ["app/src/domain/*/*.ts"],
+  "plugin": ["typedoc-plugin-markdown"],
+  "out": "generated/type-docs",
+  "excludePrivate": true,
+  "excludeInternal": true
+}

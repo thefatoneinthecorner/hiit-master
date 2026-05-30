@@ -10,6 +10,7 @@ type StepperArgs = {
   value: number;
   min?: number;
   disabled?: boolean;
+  suffix?: string;
   onChange: (next: number) => void;
 };
 
@@ -25,6 +26,7 @@ function ControlledStepper(args: StepperArgs) {
       value={value}
       min={args.min}
       disabled={args.disabled}
+      suffix={args.suffix}
       onChange={(next) => {
         setValue(next);
         args.onChange(next);
@@ -77,12 +79,14 @@ const meta = {
     value: 30,
     min: 1,
     disabled: false,
+    suffix: 's',
     onChange: () => {},
   },
   argTypes: {
     value: { control: { type: 'number', min: 0 } },
     min: { control: { type: 'number', min: 0 } },
     disabled: { control: 'boolean' },
+    suffix: { control: 'text' },
   },
 } satisfies Meta<StepperArgs>;
 

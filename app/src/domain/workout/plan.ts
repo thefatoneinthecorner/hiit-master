@@ -64,6 +64,41 @@ export function createWorkoutPlan(profile: SessionProfile, actualWorkDurationSec
   };
 }
 
+export function createBpmWorkoutPlan(profile: SessionProfile): WorkoutPlan {
+  const rounds = profile.baseRestsSec.map((baseRestSec, index) => ({
+    roundIndex: index + 1,
+    workDurationSec: profile.workDurationSec,
+    restDurationSec: baseRestSec,
+    nominalRoundDurationSec: profile.workDurationSec + baseRestSec
+  }));
+
+  const phases: WorkoutPhaseSegment[] = [];
+  let cursorSec = 0;
+
+  phases.push(buildPhase('warmup', 'Warmup', null, cursorSec, profile.warmupSec));
+  cursorSec += profile.warmupSec;
+
+  for (const round of rounds) {
+    phases.push(buildPhase('work', `Round ${round.roundIndex}`, round.roundIndex, cursorSec, round.workDurationSec));
+    cursorSec += round.workDurationSec;
+    phases.push(buildPhase('rest', `Round ${round.roundIndex}`, round.roundIndex, cursorSec, round.restDurationSec));
+    cursorSec += round.restDurationSec;
+  }
+
+  phases.push(buildPhase('cooldown', 'Cooldown', null, cursorSec, profile.cooldownBaseSec));
+  cursorSec += profile.cooldownBaseSec;
+
+  return {
+    nominalWorkDurationSec: profile.workDurationSec,
+    actualWorkDurationSec: profile.workDurationSec,
+    warmupSec: profile.warmupSec,
+    cooldownSec: profile.cooldownBaseSec,
+    rounds,
+    phases,
+    totalDurationSec: cursorSec
+  };
+}
+
 export function getPhaseAtElapsedSec(plan: WorkoutPlan, elapsedSec: number): WorkoutPhaseSegment {
   const clampedElapsedSec = Math.max(0, Math.min(plan.totalDurationSec, elapsedSec));
   const phase =

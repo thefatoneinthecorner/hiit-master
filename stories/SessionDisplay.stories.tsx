@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/preact-vite';
 import { expect, fireEvent, fn, userEvent, waitFor } from 'storybook/test';
 
 import '../app/src/styles.css';
+import type { SettingsMode } from '../app/src/application/store';
 import type { ComparisonRound, HeartRateSample } from '../app/src/domain/shared/types';
 import { SessionDisplay } from '../app/src/ui/components/SessionDisplay';
 import { latestSessionReplayFixture } from './fixtures/latestSessionReplay';
@@ -9,9 +10,11 @@ import { useSessionReplay } from './hooks/useSessionReplay';
 import sessionDisplaySpec from '../specs/ui/components/SessionDisplay.spec.md?raw';
 
 type SessionDisplayArgs = {
+  settingsMode: SettingsMode;
   title: string;
   roundName: string;
   countdownSeconds: number;
+  targetBpm?: number | null;
   remainingSeconds: number;
   timingEmphasis?: 'work' | 'recovery';
   bpm: number | null;
@@ -74,8 +77,10 @@ const meta = {
   ),
   args: {
     title: 'HIIT Session',
+    settingsMode: 'duration',
     roundName: 'Round 3: Work',
     countdownSeconds: 42,
+    targetBpm: null,
     remainingSeconds: 318,
     timingEmphasis: 'work',
     bpm: 156,
@@ -100,8 +105,10 @@ const meta = {
   },
   argTypes: {
     title: { control: 'text' },
+    settingsMode: { control: 'radio', options: ['duration', 'bpm'] },
     roundName: { control: 'text' },
     countdownSeconds: { control: 'number' },
+    targetBpm: { control: 'number' },
     remainingSeconds: { control: 'number' },
     timingEmphasis: { control: 'radio', options: ['work', 'recovery'] },
     bpm: { control: 'number' },
@@ -191,6 +198,7 @@ export const ActiveSession: Story = {
     await expect(canvasElement.querySelectorAll('rect').length).toBeGreaterThan(0);
 
     await expect(canvas.getByText('Polar H10')).toBeVisible();
+    await expect(canvas.getByTestId('recovery-histogram-magnitude')).toBeVisible();
     await expect(canvas.getByText('Battery')).toBeVisible();
     await expect(canvas.getByText('82%')).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Play' })).toBeDisabled();
@@ -208,6 +216,42 @@ export const ActiveSession: Story = {
     await userEvent.click(canvas.getByTestId('session-details-time'));
     await waitFor(() => expect(canvas.getByRole('button', { name: 'Show session controller' })).toHaveAttribute('aria-expanded', 'false'));
     await waitFor(() => expect(canvas.getByTestId('disclosure-caret')).toHaveAttribute('data-state', 'closed'));
+  },
+};
+
+export const ActiveSessionBpmMode: Story = {
+  args: {
+    settingsMode: 'bpm',
+    targetBpm: 160,
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText('HIIT Session')).toBeVisible();
+    await expect(canvas.getByText('Round 3: Work')).toBeVisible();
+    await expect(canvas.getByTestId('session-details-time')).toHaveTextContent('160');
+    await expect(canvas.getByText('156')).toBeVisible();
+    await expect(canvas.queryByText('Remaining')).not.toBeInTheDocument();
+    await expect(canvas.queryByTestId('session-details-secondary-title')).not.toBeInTheDocument();
+    await expect(canvas.queryByTestId('session-details-secondary-content')).not.toBeInTheDocument();
+    await expect(canvas.queryByTestId('recovery-histogram-magnitude')).not.toBeInTheDocument();
+  },
+};
+
+export const RunningBpmMode: Story = {
+  args: {
+    settingsMode: 'bpm',
+    targetBpm: 160,
+    title: '',
+  },
+  play: async ({ canvas }) => {
+    await expect(canvas.queryByText('HIIT Session')).not.toBeInTheDocument();
+    await expect(canvas.getByText('Round 3: Work')).toBeVisible();
+    await expect(canvas.getByTestId('session-details-time')).toHaveTextContent('160');
+    await expect(canvas.getByText('156')).toBeVisible();
+    await expect(canvas.queryByText('Remaining')).not.toBeInTheDocument();
+    await expect(canvas.queryByTestId('session-details-secondary-title')).not.toBeInTheDocument();
+    await expect(canvas.queryByTestId('session-details-secondary-content')).not.toBeInTheDocument();
+    await expect(canvas.queryByTestId('recovery-histogram-magnitude')).not.toBeInTheDocument();
+    await expect(canvas.getByRole('button', { name: 'Hide session controller' })).toHaveAttribute('aria-expanded', 'true');
   },
 };
 
@@ -234,8 +278,11 @@ export const LatestSessionReplay: Story = {
     await expect(canvas.getByText('24 May 2026, 12:43')).toBeVisible();
     await expect(canvas.getByText('Warmup')).toBeVisible();
     await expect(canvas.getByText('5:00')).toBeVisible();
-    await expect(canvas.getByText('23:35')).toBeVisible();
     await expect(canvas.getByText('55')).toBeVisible();
+    await expect(canvas.queryByText('Remaining')).not.toBeInTheDocument();
+    await expect(canvas.queryByTestId('session-details-secondary-title')).not.toBeInTheDocument();
+    await expect(canvas.queryByTestId('session-details-secondary-content')).not.toBeInTheDocument();
+    await expect(canvas.queryByTestId('recovery-histogram-magnitude')).not.toBeInTheDocument();
     await waitFor(() => expect(canvas.getByText('♥')).toHaveClass(/pulse-heart/), { timeout: 1500 });
     await expect(canvas.getByRole('button', { name: 'Show session controller' })).toHaveAttribute('aria-expanded', 'false');
     const heartGraphLine = canvasElement.querySelector('polyline');
@@ -248,7 +295,7 @@ export const LatestSessionReplay: Story = {
 
     fireEvent.keyDown(canvasElement.ownerDocument.body, { key: 's' });
     await waitFor(() => expect(canvasElement.querySelector('[data-testid="heart-graph-scrubber"]')).toBeInTheDocument());
-    await expect(canvasElement.querySelector('[data-testid="recovery-histogram-scrubber"]')).toBeInTheDocument();
+    await expect(canvasElement.querySelector('[data-testid="recovery-histogram-scrubber"]')).not.toBeInTheDocument();
 
     const sessionDisplay = canvasElement.querySelector('section');
     const displayRect = sessionDisplay?.getBoundingClientRect();
@@ -257,7 +304,7 @@ export const LatestSessionReplay: Story = {
     }
     fireEvent.mouseMove(sessionDisplay, { clientX: displayRect.left + displayRect.width * 0.5 });
     await waitFor(() => expect(canvasElement.querySelector('[data-testid="heart-graph-scrubber"]')).toHaveAttribute('x1', expect.stringMatching(/^50/)));
-    await expect(canvasElement.querySelector('[data-testid="recovery-histogram-scrubber"]')).toHaveAttribute('x1', expect.stringMatching(/^50/));
+    await expect(canvasElement.querySelector('[data-testid="recovery-histogram-scrubber"]')).not.toBeInTheDocument();
 
     fireEvent.keyDown(canvasElement.ownerDocument.body, { key: 's' });
     await waitFor(() => expect(canvasElement.querySelector('[data-testid="heart-graph-scrubber"]')).not.toBeInTheDocument());
@@ -290,18 +337,14 @@ export const LatestSessionReplay: Story = {
     await waitFor(() => expect(readSessionDetailsRemainingSeconds(canvas)).toBeLessThan(spacePausedRemainingSeconds), { timeout: 1500 });
 
     fireEvent.keyDown(canvasElement.ownerDocument.body, { key: 'ArrowRight' });
-    let fastForwardedRemainingSeconds = 0;
-    await waitFor(() => {
-      const remainingSeconds = readSessionDetailsRemainingSeconds(canvas);
-      fastForwardedRemainingSeconds = remainingSeconds;
-      expect(remainingSeconds).toBeLessThan(295);
-    }, { timeout: 1000 });
+    await waitFor(() => expect(canvas.getByText('Round 3: Rest')).toBeVisible(), { timeout: 6000 });
+    await waitFor(() => expect(canvas.getByTestId('session-details-bpm')).toHaveTextContent('108'), { timeout: 3000 });
+    await expect(canvas.getByTestId('session-details-time')).toHaveTextContent('105');
     fireEvent.keyUp(canvasElement.ownerDocument.body, { key: 'ArrowRight' });
 
     fireEvent.keyDown(canvasElement.ownerDocument.body, { key: 'ArrowLeft' });
-    await waitFor(() => {
-      expect(readSessionDetailsRemainingSeconds(canvas)).toBeGreaterThan(fastForwardedRemainingSeconds);
-    }, { timeout: 1000 });
+    await waitFor(() => expect(canvas.getByText('Warmup')).toBeVisible(), { timeout: 2000 });
+    await expect(canvas.getByTestId('session-details-time')).toHaveTextContent(/^\d+:\d{2}$/);
     fireEvent.keyUp(canvasElement.ownerDocument.body, { key: 'ArrowLeft' });
   },
 };
