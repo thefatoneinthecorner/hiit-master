@@ -10,6 +10,7 @@ export type SessionStatus =
   | 'error';
 
 export type WorkoutPhaseKind = 'countdown' | 'warmup' | 'work' | 'rest' | 'cooldown';
+export type IntervalKind = 'warmup' | 'work' | 'rest' | 'cooldown';
 export type SettingsMode = 'duration' | 'bpm';
 
 /** An exercise profile */
@@ -55,6 +56,19 @@ export interface WorkoutPlan {
   rounds: WorkoutRoundPlan[];
   phases: WorkoutPhaseSegment[];
   totalDurationSec: number;
+}
+
+export interface Sample {
+  elapsedSec: number;
+  bpm: number;
+}
+
+export interface Interval {
+  kind: IntervalKind;
+  start: Sample;
+  end: Sample;
+  max: Sample;
+  min: Sample;
 }
 
 export interface HeartRateSample {
