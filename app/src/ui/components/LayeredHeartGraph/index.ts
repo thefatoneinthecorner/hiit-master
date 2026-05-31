@@ -1,4 +1,5 @@
 export { Crosshairs } from './Crosshairs';
+export { formatCrosshairTimeLabel } from './crosshairLabels';
 export { IntervalHighlight } from './IntervalHighlight';
 export { LayeredHeartGraph, OverlayLayerPortal, SvgLayerPortal } from './LayeredHeartGraph';
 export { SessionHeartRateLine, getSessionSampleY } from './SessionHeartRateLine';

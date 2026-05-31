@@ -97,14 +97,18 @@ export const Default: Story = {
     await expect(canvasElement.querySelectorAll('[data-testid="trend-selected-point-title-smallcaps"]').length).toBeGreaterThan(1);
     await expect(canvas.getByRole('heading', { name: 'Normalised CoV' })).toBeVisible();
     await expect(canvas.getByTestId('heart-graph-crosshair-time')).toHaveTextContent('14:04 R7 W Δ12 ↓5');
+    await expect(canvas.getByTestId('layered-heart-graph-crosshair-x-label')).toHaveTextContent('11:48 R5 W Δ20 ↓2');
 
     const graphSurfaces = canvasElement.querySelectorAll('.graph-surface');
     const normalisedGraph = canvas.getByTestId('normalised-cov-graph-surface');
     const selectedPointTitle = canvas.getByTestId('trend-selected-point-title');
-    const heartGraph = graphSurfaces[graphSurfaces.length - 1] as HTMLDivElement | undefined;
+    const layeredHeartGraph = canvas.getByTestId('layered-heart-graph');
+    const heartGraph = graphSurfaces[graphSurfaces.length - 2] as HTMLDivElement | undefined;
     await expect(heartGraph).toBeInTheDocument();
+    await expect(layeredHeartGraph).toBeInTheDocument();
     await expect(normalisedGraph.compareDocumentPosition(selectedPointTitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await expect(selectedPointTitle.compareDocumentPosition(heartGraph) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await expect(heartGraph?.compareDocumentPosition(layeredHeartGraph) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     if (heartGraph) {
       const bounds = heartGraph.getBoundingClientRect();
       fireEvent.pointerDown(heartGraph, { pointerId: 2, clientX: bounds.left + bounds.width * 0.5, buttons: 1 });

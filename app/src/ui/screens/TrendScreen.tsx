@@ -5,8 +5,17 @@ import { deriveBpmSessionPlan } from '../../domain/analysis/bpmTimeline';
 import { analyzeSessionRounds } from '../../domain/analysis/recovery';
 import { buildNormalisedCovTrendPoints } from '../../domain/trend/normalisedCov';
 import { isComparisonEligibleSession } from '../../domain/session/lifecycle';
-import type { SessionRecord } from '../../domain/shared/types';
+import type { Interval, Sample, SessionRecord, WorkoutPlan } from '../../domain/shared/types';
 import { HeartGraph } from '../components/HeartGraph';
+import {
+  Crosshairs,
+  IntervalHighlight,
+  LayeredHeartGraph,
+  SessionHeartRateLine,
+  formatCrosshairTimeLabel,
+  getSessionSampleY,
+  useLayeredHeartGraphPointerX,
+} from '../components/LayeredHeartGraph';
 import { formatNormalisedCovPointLabel, NormalisedCovGraph, type NormalisedCovPoint } from '../components/NormalisedCovGraph';
 
 interface TrendScreenViewProps {
@@ -40,6 +49,111 @@ function SmallCapsTitle({ text }: { text: string }) {
         );
       })}
     </h2>
+  );
+}
+
+function getValidSamples(session: SessionRecord): Sample[] {
+  return session.samples
+    .filter((sample): sample is Sample => sample.bpm !== null)
+    .sort((left, right) => left.elapsedSec - right.elapsedSec);
+}
+
+function getNearestSample(session: SessionRecord, elapsedSec: number): Sample {
+  const nearest = getValidSamples(session).reduce<Sample | null>((candidate, sample) => {
+    if (!candidate) {
+      return sample;
+    }
+
+    return Math.abs(sample.elapsedSec - elapsedSec) < Math.abs(candidate.elapsedSec - elapsedSec)
+      ? sample
+      : candidate;
+  }, null);
+
+  if (!nearest) {
+    throw new Error('Session must contain valid heart-rate samples');
+  }
+
+  return nearest;
+}
+
+function buildIntervalAtX(session: SessionRecord, x: number): Interval {
+  const elapsedSec = Math.round((session.plan.totalDurationSec * x) / 100);
+  const phase =
+    session.plan.phases.find((item) => elapsedSec >= item.startSec && elapsedSec < item.endSec) ??
+    session.plan.phases.at(-1);
+
+  if (!phase || phase.kind === 'countdown') {
+    throw new Error('Session must contain a highlightable interval');
+  }
+
+  const samples = getValidSamples(session).filter(
+    (sample) => sample.elapsedSec >= phase.startSec && sample.elapsedSec <= phase.endSec
+  );
+  const fallback = getNearestSample(session, phase.startSec);
+  const max = samples.reduce<Sample>(
+    (candidate, sample) => sample.bpm > candidate.bpm ? sample : candidate,
+    samples[0] ?? fallback
+  );
+  const min = samples.reduce<Sample>(
+    (candidate, sample) => sample.bpm < candidate.bpm ? sample : candidate,
+    samples[0] ?? fallback
+  );
+
+  return {
+    kind: phase.kind,
+    start: getNearestSample(session, phase.startSec),
+    end: getNearestSample(session, phase.endSec),
+    max,
+    min,
+  };
+}
+
+function buildDisplaySession(
+  session: SessionRecord,
+  plan: WorkoutPlan = deriveBpmSessionPlan(session)
+): SessionRecord {
+  return {
+    ...session,
+    plan,
+    analysis: plan === session.plan ? session.analysis : analyzeSessionRounds(plan, session.samples),
+  };
+}
+
+function LayeredTrendHeartGraph({
+  session,
+  plan,
+  analysis,
+  previousSessions,
+}: {
+  session: SessionRecord;
+  plan: WorkoutPlan;
+  analysis: SessionRecord['analysis'];
+  previousSessions?: SessionRecord[];
+}) {
+  const { x, pointerProps } = useLayeredHeartGraphPointerX({
+    initialX: 50,
+    movementMode: 'jump',
+  });
+  const displaySession: SessionRecord = {
+    ...session,
+    plan,
+    analysis,
+  };
+  const previousDisplaySessions = (previousSessions ?? []).map((previousSession) => buildDisplaySession(previousSession));
+  const elapsedSec = Math.round((plan.totalDurationSec * x) / 100);
+  const sample = getNearestSample(displaySession, elapsedSec);
+
+  return (
+    <LayeredHeartGraph heightClassName="h-56" {...pointerProps}>
+      <SessionHeartRateLine session={displaySession} />
+      <IntervalHighlight interval={buildIntervalAtX(displaySession, x)} totalDurationSec={plan.totalDurationSec} />
+      <Crosshairs
+        x={x}
+        y={getSessionSampleY(displaySession, sample)}
+        xLabel={formatCrosshairTimeLabel(displaySession, elapsedSec, previousDisplaySessions)}
+        yLabel={`${sample.bpm} bpm`}
+      />
+    </LayeredHeartGraph>
   );
 }
 
@@ -93,29 +207,37 @@ export function TrendScreenView({
         {...(referenceDate ? { referenceDate } : {})}
       />
       <SmallCapsTitle text={formatNormalisedCovPointLabel(activePoint)} />
-      {activeSession ? (
-        <HeartGraph
-          samples={activeSession.samples}
-          totalDurationSec={activePlan?.totalDurationSec ?? activeSession.plan.totalDurationSec}
-          nominalPeakHeartrate={activeSession.profileSnapshot.nominalPeakHeartrate}
-          labelledAxes
-          scrubElapsedSec={activeScrubElapsedSec}
-          timeScale="duration"
-          crosshairScrubber
-          heightClassName="h-56"
-          phases={activePlan?.phases ?? activeSession.plan.phases}
-          analysis={activeAnalysis ?? activeSession.analysis}
-          onScrubElapsedSecChange={setHeartScrubElapsedSec}
-          previousSessions={previousSessions.map((session) => {
-            const plan = deriveBpmSessionPlan(session);
+      {activeSession && activePlan && activeAnalysis ? (
+        <>
+          <HeartGraph
+            samples={activeSession.samples}
+            totalDurationSec={activePlan.totalDurationSec}
+            nominalPeakHeartrate={activeSession.profileSnapshot.nominalPeakHeartrate}
+            labelledAxes
+            scrubElapsedSec={activeScrubElapsedSec}
+            timeScale="duration"
+            crosshairScrubber
+            heightClassName="h-56"
+            phases={activePlan.phases}
+            analysis={activeAnalysis}
+            onScrubElapsedSecChange={setHeartScrubElapsedSec}
+            previousSessions={previousSessions.map((session) => {
+              const plan = deriveBpmSessionPlan(session);
 
-            return {
-              samples: session.samples,
-              phases: plan.phases,
-              analysis: plan === session.plan ? session.analysis : analyzeSessionRounds(plan, session.samples),
-            };
-          })}
-        />
+              return {
+                samples: session.samples,
+                phases: plan.phases,
+                analysis: plan === session.plan ? session.analysis : analyzeSessionRounds(plan, session.samples),
+              };
+            })}
+          />
+          <LayeredTrendHeartGraph
+            session={activeSession}
+            plan={activePlan}
+            analysis={activeAnalysis}
+            previousSessions={previousSessions}
+          />
+        </>
       ) : null}
     </section>
   );
