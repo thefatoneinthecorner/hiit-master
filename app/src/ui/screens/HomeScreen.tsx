@@ -1,8 +1,8 @@
 import { appStore } from '../../application/store';
 import type { SessionRuntime, SettingsMode } from '../../application/store';
 import { getProfileBpmTargets } from '../../domain/shared/profile';
-import type { ComparisonRound, SessionProfile, WorkoutPhaseSegment, WorkoutPlan } from '../../domain/shared/types';
-import { HeartGraph } from '../components/HeartGraph';
+import type { ComparisonRound, HeartRateSample, SessionProfile, WorkoutPhaseSegment, WorkoutPlan } from '../../domain/shared/types';
+import { LayeredHeartGraph, SvgLayerPortal } from '../components/LayeredHeartGraph';
 import { Pulse } from '../components/Pulse';
 import { RecoveryHistogram } from '../components/RecoveryHistogram';
 import { RoundTiming } from '../components/RoundTiming';
@@ -68,6 +68,59 @@ function getRoundEndElapsedSec(plan: WorkoutPlan): number[] {
 
     return restPhase?.endSec ?? workPhase?.endSec ?? plan.totalDurationSec;
   });
+}
+
+function getLayeredGraphRange(samples: HeartRateSample[], nominalPeakHeartrate: number) {
+  const values = samples.filter((sample) => sample.bpm !== null).map((sample) => sample.bpm as number);
+  const maxBpm = values.length > 0 ? Math.max(nominalPeakHeartrate, ...values) : nominalPeakHeartrate;
+  const minBpm = values.length > 0 ? Math.min(...values) : 50;
+
+  return {
+    min: Math.min(50, minBpm),
+    max: Math.ceil(maxBpm / 10) * 10,
+  };
+}
+
+function FallbackLayeredHeartGraph({
+  samples,
+  totalDurationSec,
+  nominalPeakHeartrate,
+}: {
+  samples: HeartRateSample[];
+  totalDurationSec: number;
+  nominalPeakHeartrate: number;
+}) {
+  const width = 100;
+  const height = 42;
+  const validSamples = samples.filter((sample) => sample.bpm !== null);
+  const { min, max } = getLayeredGraphRange(samples, nominalPeakHeartrate);
+  const points = validSamples.length === 0
+    ? `0,${height} ${width},${height}`
+    : validSamples
+      .map((sample) => {
+        const x = (sample.elapsedSec / Math.max(totalDurationSec, 1)) * width;
+        const y = height - (((sample.bpm as number) - min) / Math.max(max - min, 1)) * height;
+
+        return `${x},${y}`;
+      })
+      .join(' ');
+
+  return (
+    <LayeredHeartGraph heightClassName="h-32 sm:h-40">
+      <SvgLayerPortal>
+        <polyline
+          data-testid="home-fallback-layered-heart-graph-line"
+          fill="none"
+          stroke="var(--accent)"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          vector-effect="non-scaling-stroke"
+          points={points}
+        />
+      </SvgLayerPortal>
+    </LayeredHeartGraph>
+  );
 }
 
 interface HomeScreenViewProps {
@@ -266,12 +319,10 @@ export function HomeScreenView({
       </div>
       <div class="min-h-0 flex flex-1 flex-col gap-3">
         <div class="min-h-0 flex-1">
-          <HeartGraph
+          <FallbackLayeredHeartGraph
             samples={runtime.samples}
             totalDurationSec={plan.totalDurationSec}
             nominalPeakHeartrate={profile.nominalPeakHeartrate}
-            scrubElapsedSec={null}
-            heightClassName="h-32 sm:h-40"
           />
         </div>
         <RecoveryHistogram
