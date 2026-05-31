@@ -1,12 +1,9 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
-
 import { appStore } from '../../application/store';
 import { deriveBpmSessionPlan } from '../../domain/analysis/bpmTimeline';
 import { analyzeSessionRounds } from '../../domain/analysis/recovery';
 import { buildNormalisedCovTrendPoints } from '../../domain/trend/normalisedCov';
 import { isComparisonEligibleSession } from '../../domain/session/lifecycle';
 import type { Sample, SessionRecord, WorkoutPlan } from '../../domain/shared/types';
-import { HeartGraph } from '../components/HeartGraph';
 import {
   Crosshairs,
   IntervalHighlight,
@@ -25,7 +22,7 @@ interface TrendScreenViewProps {
   referenceDate?: string;
   selectedIndex: number;
   onSelectedIndexChange: (index: number) => void;
-  heartGraphScrubElapsedSec?: number;
+  layeredGraphInitialElapsedSec?: number;
 }
 
 function SmallCapsTitle({ text }: { text: string }) {
@@ -93,14 +90,16 @@ function LayeredTrendHeartGraph({
   plan,
   analysis,
   previousSessions,
+  initialElapsedSec,
 }: {
   session: SessionRecord;
   plan: WorkoutPlan;
   analysis: SessionRecord['analysis'];
   previousSessions?: SessionRecord[];
+  initialElapsedSec: number;
 }) {
   const { x, pointerProps } = useLayeredHeartGraphPointerX({
-    initialX: 50,
+    initialX: (Math.min(initialElapsedSec, plan.totalDurationSec) / Math.max(plan.totalDurationSec, 1)) * 100,
     movementMode: 'jump',
   });
   const displaySession: SessionRecord = {
@@ -132,9 +131,8 @@ export function TrendScreenView({
   referenceDate,
   selectedIndex,
   onSelectedIndexChange,
-  heartGraphScrubElapsedSec = 844,
+  layeredGraphInitialElapsedSec = 844,
 }: TrendScreenViewProps) {
-  const [heartScrubElapsedSec, setHeartScrubElapsedSec] = useState(heartGraphScrubElapsedSec);
   const validPoints = points.filter((point) => point.value !== null && point.value > 0);
   const activeIndex = Math.min(Math.max(selectedIndex, 0), Math.max(validPoints.length - 1, 0));
   const activePoint = validPoints[activeIndex] ?? null;
@@ -152,20 +150,6 @@ export function TrendScreenView({
       ? activeSession.analysis
       : analyzeSessionRounds(activePlan, activeSession.samples)
     : null;
-  const previousActiveSessionIdRef = useRef(activeSession?.id ?? null);
-  const activeScrubElapsedSec = activePlan
-    ? Math.min(heartScrubElapsedSec, activePlan.totalDurationSec)
-    : null;
-
-  useEffect(() => {
-    if (previousActiveSessionIdRef.current === activeSession?.id) {
-      return;
-    }
-
-    previousActiveSessionIdRef.current = activeSession?.id ?? null;
-    setHeartScrubElapsedSec(heartGraphScrubElapsedSec);
-  }, [activeSession?.id, heartGraphScrubElapsedSec]);
-
   return (
     <section class="space-y-4 pb-8">
       <NormalisedCovGraph
@@ -177,36 +161,14 @@ export function TrendScreenView({
       />
       <SmallCapsTitle text={formatNormalisedCovPointLabel(activePoint)} />
       {activeSession && activePlan && activeAnalysis ? (
-        <>
-          <HeartGraph
-            samples={activeSession.samples}
-            totalDurationSec={activePlan.totalDurationSec}
-            nominalPeakHeartrate={activeSession.profileSnapshot.nominalPeakHeartrate}
-            labelledAxes
-            scrubElapsedSec={activeScrubElapsedSec}
-            timeScale="duration"
-            crosshairScrubber
-            heightClassName="h-56"
-            phases={activePlan.phases}
-            analysis={activeAnalysis}
-            onScrubElapsedSecChange={setHeartScrubElapsedSec}
-            previousSessions={previousSessions.map((session) => {
-              const plan = deriveBpmSessionPlan(session);
-
-              return {
-                samples: session.samples,
-                phases: plan.phases,
-                analysis: plan === session.plan ? session.analysis : analyzeSessionRounds(plan, session.samples),
-              };
-            })}
-          />
-          <LayeredTrendHeartGraph
-            session={activeSession}
-            plan={activePlan}
-            analysis={activeAnalysis}
-            previousSessions={previousSessions}
-          />
-        </>
+        <LayeredTrendHeartGraph
+          key={activeSession.id}
+          session={activeSession}
+          plan={activePlan}
+          analysis={activeAnalysis}
+          previousSessions={previousSessions}
+          initialElapsedSec={layeredGraphInitialElapsedSec}
+        />
       ) : null}
     </section>
   );

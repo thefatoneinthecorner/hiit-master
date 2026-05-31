@@ -18,7 +18,7 @@ type TrendScreenArgs = {
   referenceDate?: string;
   selectedIndex: number;
   onSelectedIndexChange: (index: number) => void;
-  heartGraphScrubElapsedSec?: number;
+  layeredGraphInitialElapsedSec?: number;
 };
 
 const backupSessions = (hiitMasterBackup as { sessions: SessionRecord[] }).sessions.map((session) => ({
@@ -96,29 +96,24 @@ export const Default: Story = {
     await expect(canvas.getByTestId('trend-selected-point-title')).toHaveClass(/tracking-\[0\.12em\]/);
     await expect(canvasElement.querySelectorAll('[data-testid="trend-selected-point-title-smallcaps"]').length).toBeGreaterThan(1);
     await expect(canvas.getByRole('heading', { name: 'Normalised CoV' })).toBeVisible();
-    await expect(canvas.getByTestId('heart-graph-crosshair-time')).toHaveTextContent('14:04 R7 W Δ12 ↓5');
-    await expect(canvas.getByTestId('layered-heart-graph-crosshair-x-label')).toHaveTextContent('11:48 R5 W Δ20 ↓2');
+    await expect(canvas.queryByTestId('heart-graph-crosshair-time')).not.toBeInTheDocument();
+    await expect(canvas.getByTestId('layered-heart-graph-crosshair-x-label')).toHaveTextContent('14:04 R7 W Δ12 ↓5');
 
-    const graphSurfaces = canvasElement.querySelectorAll('.graph-surface');
     const normalisedGraph = canvas.getByTestId('normalised-cov-graph-surface');
     const selectedPointTitle = canvas.getByTestId('trend-selected-point-title');
     const layeredHeartGraph = canvas.getByTestId('layered-heart-graph');
-    const heartGraph = graphSurfaces[graphSurfaces.length - 2] as HTMLDivElement | undefined;
-    await expect(heartGraph).toBeInTheDocument();
     await expect(layeredHeartGraph).toBeInTheDocument();
     await expect(normalisedGraph.compareDocumentPosition(selectedPointTitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    await expect(selectedPointTitle.compareDocumentPosition(heartGraph) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    await expect(heartGraph?.compareDocumentPosition(layeredHeartGraph) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    if (heartGraph) {
-      const bounds = heartGraph.getBoundingClientRect();
-      fireEvent.pointerDown(heartGraph, { pointerId: 2, clientX: bounds.left + bounds.width * 0.5, buttons: 1 });
-      await waitFor(() => expect(canvas.getByTestId('heart-graph-crosshair-time')).toHaveTextContent('11:48 R5 W Δ20 ↓2'));
-      fireEvent.pointerUp(heartGraph, { pointerId: 2, clientX: bounds.left + bounds.width * 0.5, buttons: 0 });
+    await expect(selectedPointTitle.compareDocumentPosition(layeredHeartGraph) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-      fireEvent.pointerDown(heartGraph, { pointerId: 3, clientX: bounds.left + bounds.width * 0.92, buttons: 1 });
-      await waitFor(() => expect(canvas.getByTestId('heart-graph-crosshair-time')).toHaveTextContent('21:42 Cooldown Δ30 ↓3'));
-      fireEvent.pointerUp(heartGraph, { pointerId: 3, clientX: bounds.left + bounds.width * 0.92, buttons: 0 });
-    }
+    const layeredBounds = layeredHeartGraph.getBoundingClientRect();
+    fireEvent.pointerDown(layeredHeartGraph, { pointerId: 2, clientX: layeredBounds.left + layeredBounds.width * 0.5, buttons: 1 });
+    await waitFor(() => expect(canvas.getByTestId('layered-heart-graph-crosshair-x-label')).toHaveTextContent('11:48 R5 W Δ20 ↓2'));
+    fireEvent.pointerUp(layeredHeartGraph, { pointerId: 2, clientX: layeredBounds.left + layeredBounds.width * 0.5, buttons: 0 });
+
+    fireEvent.pointerDown(layeredHeartGraph, { pointerId: 3, clientX: layeredBounds.left + layeredBounds.width * 0.92, buttons: 1 });
+    await waitFor(() => expect(canvas.getByTestId('layered-heart-graph-crosshair-x-label')).toHaveTextContent('21:42 Cooldown Δ30 ↓3'));
+    fireEvent.pointerUp(layeredHeartGraph, { pointerId: 3, clientX: layeredBounds.left + layeredBounds.width * 0.92, buttons: 0 });
 
     const scrubber = canvas.getByTestId('normalised-cov-graph-surface');
     fireEvent.pointerMove(scrubber, { pointerId: 1, clientX: clientXForTrendDate(scrubber, '2026-05-23T10:36:38.890Z') });
@@ -128,15 +123,15 @@ export const Default: Story = {
 
     await expect(args.onSelectedIndexChange).toHaveBeenCalled();
     await waitFor(() => expect(canvas.getByRole('heading', { name: 'Full Timer 2, 28s work' })).toBeVisible());
-    await waitFor(() => expect(canvas.getByTestId('heart-graph-crosshair-time')).toHaveTextContent('14:04 R7 R Δ9 ↓3'));
+    await waitFor(() => expect(canvas.getByTestId('layered-heart-graph-crosshair-x-label')).toHaveTextContent('14:04 R7 R Δ9 ↓3'));
 
     const scrubberBounds = scrubber.getBoundingClientRect();
     fireEvent.pointerMove(scrubber, { pointerId: 1, clientX: scrubberBounds.right + scrubberBounds.width });
     await waitFor(() => expect(canvas.getByRole('heading', { name: 'Full Timer 2 2, 30s work' })).toBeVisible());
-    await waitFor(() => expect(canvas.getByTestId('heart-graph-crosshair-time')).toHaveTextContent('14:04 R7 W Δ12 ↓5'));
+    await waitFor(() => expect(canvas.getByTestId('layered-heart-graph-crosshair-x-label')).toHaveTextContent('14:04 R7 W Δ12 ↓5'));
     fireEvent.pointerUp(scrubber, { pointerId: 1, clientX: scrubberBounds.right + scrubberBounds.width });
     fireEvent.pointerMove(scrubber, { pointerId: 1, clientX: clientXForTrendDate(scrubber, '2026-05-23T10:36:38.890Z') });
-    await expect(canvas.getByTestId('heart-graph-crosshair-time')).toHaveTextContent('14:04 R7 W Δ12 ↓5');
+    await expect(canvas.getByTestId('layered-heart-graph-crosshair-x-label')).toHaveTextContent('14:04 R7 W Δ12 ↓5');
   },
 };
 
@@ -146,12 +141,13 @@ export const BpmSessionUsesActualPhaseTimeline: Story = {
     sessions: bpmBackupSessions,
     referenceDate: '2026-05-29T12:00:00.000Z',
     selectedIndex: latestBpmValidPointIndex,
-    heartGraphScrubElapsedSec: 583,
+    layeredGraphInitialElapsedSec: 583,
   },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('heading', { name: 'Full Timer 2 2, 30s work' })).toBeVisible();
-    await expect(canvas.getByTestId('heart-graph-crosshair-time')).toHaveTextContent('9:43 R4 W');
-    await expect(canvas.getByTestId('heart-graph-crosshair-time')).not.toHaveTextContent('9:43 R3 R');
+    await expect(canvas.queryByTestId('heart-graph-crosshair-time')).not.toBeInTheDocument();
+    await expect(canvas.getByTestId('layered-heart-graph-crosshair-x-label')).toHaveTextContent('9:43 R4 W');
+    await expect(canvas.getByTestId('layered-heart-graph-crosshair-x-label')).not.toHaveTextContent('9:43 R3 R');
 
     const layeredGraph = canvas.getByTestId('layered-heart-graph');
     const bounds = layeredGraph.getBoundingClientRect();

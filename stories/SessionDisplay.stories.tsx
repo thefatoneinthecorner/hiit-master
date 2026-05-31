@@ -3,9 +3,11 @@ import { expect, fireEvent, fn, userEvent, waitFor } from 'storybook/test';
 
 import '../app/src/styles.css';
 import type { SettingsMode } from '../app/src/application/store';
-import type { ComparisonRound, HeartRateSample } from '../app/src/domain/shared/types';
+import { analyzeSessionRounds } from '../app/src/domain/analysis/recovery';
+import type { ComparisonRound, HeartRateSample, SessionRecord } from '../app/src/domain/shared/types';
 import { SessionDisplay } from '../app/src/ui/components/SessionDisplay';
-import { latestSessionReplayFixture } from './fixtures/latestSessionReplay';
+import hiitMasterBackup from '../hiit-master-backup.json';
+import { latestSessionReplayFixture, type LatestSessionReplayFixture } from './fixtures/latestSessionReplay';
 import { useSessionReplay } from './hooks/useSessionReplay';
 import sessionDisplaySpec from '../specs/ui/components/SessionDisplay.spec.md?raw';
 
@@ -57,6 +59,38 @@ const recoveryRounds: ComparisonRound[] = [
   { roundIndex: 3, currentDelta: 39, previousDelta: 39, diffDelta: 0 },
   { roundIndex: 4, currentDelta: 50, previousDelta: 38, diffDelta: 12 },
 ];
+
+const durationReplaySessions = (hiitMasterBackup as { sessions: SessionRecord[] }).sessions
+  .filter((session) => session.status === 'completed')
+  .map((session) => ({
+    ...session,
+    analysis: analyzeSessionRounds(session.plan, session.samples),
+  }))
+  .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+const latestDurationReplaySession = durationReplaySessions.find((session) => (session.settingsMode ?? 'duration') === 'duration');
+
+if (!latestDurationReplaySession) {
+  throw new Error('Latest duration replay story requires a completed duration session');
+}
+
+const previousDurationReplaySession =
+  durationReplaySessions.find((session) =>
+    session.startedAt < latestDurationReplaySession.startedAt &&
+    session.profileId === latestDurationReplaySession.profileId
+  ) ??
+  durationReplaySessions.find((session) => session.startedAt < latestDurationReplaySession.startedAt) ??
+  latestDurationReplaySession;
+
+const latestDurationSessionReplayFixture = {
+  latest: latestDurationReplaySession,
+  previousComparable: {
+    id: previousDurationReplaySession.id,
+    startedAt: previousDurationReplaySession.startedAt,
+    endedAt: previousDurationReplaySession.endedAt,
+    name: previousDurationReplaySession.name,
+    analysis: previousDurationReplaySession.analysis,
+  },
+} satisfies LatestSessionReplayFixture;
 
 const meta = {
   title: 'Components/SessionDisplay',
@@ -138,8 +172,8 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-function LatestSessionRealtimeReplayDemo() {
-  const replay = useSessionReplay(latestSessionReplayFixture);
+function SessionRealtimeReplayDemo({ fixture }: { fixture: LatestSessionReplayFixture }) {
+  const replay = useSessionReplay(fixture);
 
   return (
     <SessionDisplay
@@ -271,7 +305,7 @@ export const ControllerInitiallyHidden: Story = {
 export const LatestSessionReplay: Story = {
   render: () => (
     <div class="w-full p-6">
-      <LatestSessionRealtimeReplayDemo />
+      <SessionRealtimeReplayDemo fixture={latestSessionReplayFixture} />
     </div>
   ),
   play: async ({ canvas, canvasElement }) => {
@@ -346,5 +380,25 @@ export const LatestSessionReplay: Story = {
     await waitFor(() => expect(canvas.getByText('Warmup')).toBeVisible(), { timeout: 2000 });
     await expect(canvas.getByTestId('session-details-time')).toHaveTextContent(/^\d+:\d{2}$/);
     fireEvent.keyUp(canvasElement.ownerDocument.body, { key: 'ArrowLeft' });
+  },
+};
+
+export const LatestDurationSessionReplay: Story = {
+  render: () => (
+    <div class="w-full p-6">
+      <SessionRealtimeReplayDemo fixture={latestDurationSessionReplayFixture} />
+    </div>
+  ),
+  play: async ({ canvas, canvasElement }) => {
+    await expect(canvas.getByText('27 May 2026, 11:34')).toBeVisible();
+    await expect(canvas.getByText('Warmup')).toBeVisible();
+    await expect(canvas.getByTestId('session-details-time')).toHaveTextContent('5:00');
+    await expect(canvas.getByText('Remaining')).toBeVisible();
+    await expect(canvas.getByTestId('session-details-secondary-content')).toHaveTextContent('23:35');
+    await expect(canvas.getByTestId('session-details-bpm')).toHaveTextContent('53');
+    await expect(canvas.getByTestId('recovery-histogram-magnitude')).toBeVisible();
+    await expect(canvas.getByRole('button', { name: 'Show session controller' })).toHaveAttribute('aria-expanded', 'false');
+    await expect(canvasElement.querySelector('polyline')).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByTestId('session-details-time')).toHaveTextContent('4:59'), { timeout: 1500 });
   },
 };
