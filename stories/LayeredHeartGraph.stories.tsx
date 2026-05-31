@@ -8,6 +8,7 @@ import {
   IntervalHighlight,
   LayeredHeartGraph,
   SessionHeartRateLine,
+  buildSessionIntervalAtX,
   formatCrosshairTimeLabel,
   getSessionSampleY,
   type LayeredHeartGraphPointerMovementMode,
@@ -55,12 +56,6 @@ function getPreviousCompletedSameProfileSession(session: SessionRecord): Session
     .sort((left, right) => right.startedAt.localeCompare(left.startedAt))[0] ?? null;
 }
 
-function getValidSamples(session: SessionRecord): Sample[] {
-  return session.samples
-    .filter((sample): sample is Sample => sample.bpm !== null)
-    .sort((left, right) => left.elapsedSec - right.elapsedSec);
-}
-
 function buildStoryInterval(session: SessionRecord): Interval {
   const phase =
     session.plan.phases.find((item) => item.kind === 'rest' && item.roundIndex === 9) ??
@@ -75,38 +70,6 @@ function buildStoryInterval(session: SessionRecord): Interval {
     .sort((left, right) => left.elapsedSec - right.elapsedSec);
   const max = samples.reduce<Sample>((candidate, sample) => sample.bpm > candidate.bpm ? sample : candidate, samples[0] ?? getNearestSample(session, phase.startSec));
   const min = samples.reduce<Sample>((candidate, sample) => sample.bpm < candidate.bpm ? sample : candidate, samples[0] ?? getNearestSample(session, phase.startSec));
-
-  return {
-    kind: phase.kind,
-    start: getNearestSample(session, phase.startSec),
-    end: getNearestSample(session, phase.endSec),
-    max,
-    min,
-  };
-}
-
-function getSessionIntervalAtX(session: SessionRecord, x: number): Interval {
-  const elapsedSec = Math.round((session.plan.totalDurationSec * x) / 100);
-  const phase =
-    session.plan.phases.find((item) => elapsedSec >= item.startSec && elapsedSec < item.endSec) ??
-    session.plan.phases.at(-1);
-
-  if (!phase || phase.kind === 'countdown') {
-    throw new Error('Session must contain a highlightable interval');
-  }
-
-  const samples = getValidSamples(session).filter(
-    (sample) => sample.elapsedSec >= phase.startSec && sample.elapsedSec <= phase.endSec
-  );
-  const fallback = getNearestSample(session, phase.startSec);
-  const max = samples.reduce<Sample>(
-    (candidate, sample) => sample.bpm > candidate.bpm ? sample : candidate,
-    samples[0] ?? fallback
-  );
-  const min = samples.reduce<Sample>(
-    (candidate, sample) => sample.bpm < candidate.bpm ? sample : candidate,
-    samples[0] ?? fallback
-  );
 
   return {
     kind: phase.kind,
@@ -138,8 +101,8 @@ function DefaultCrosshairs({ session }: { session: SessionRecord }) {
 
 function SessionIntervalHighlight({ session, x }: { session: SessionRecord; x: number }) {
   return (
-    <IntervalHighlight
-      interval={getSessionIntervalAtX(session, x)}
+      <IntervalHighlight
+      interval={buildSessionIntervalAtX(session, x)}
       totalDurationSec={session.plan.totalDurationSec}
     />
   );

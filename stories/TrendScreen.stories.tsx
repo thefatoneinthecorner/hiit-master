@@ -152,5 +152,17 @@ export const BpmSessionUsesActualPhaseTimeline: Story = {
     await expect(canvas.getByRole('heading', { name: 'Full Timer 2 2, 30s work' })).toBeVisible();
     await expect(canvas.getByTestId('heart-graph-crosshair-time')).toHaveTextContent('9:43 R4 W');
     await expect(canvas.getByTestId('heart-graph-crosshair-time')).not.toHaveTextContent('9:43 R3 R');
+
+    const layeredGraph = canvas.getByTestId('layered-heart-graph');
+    const bounds = layeredGraph.getBoundingClientRect();
+    fireEvent.pointerDown(layeredGraph, { pointerId: 4, clientX: bounds.left + bounds.width * (583 / 1389), buttons: 1 });
+    await waitFor(() => expect(canvas.getByTestId('layered-heart-graph-crosshair-x-label')).toHaveTextContent('9:43 R4 W'));
+
+    const highlight = canvas.getByTestId('layered-heart-graph-interval-highlight');
+    const maxLine = canvas.getByTestId('layered-heart-graph-interval-max-line');
+    const highlightEndX = Number(highlight.getAttribute('x')) + Number(highlight.getAttribute('width'));
+    const maxX = Number(maxLine.getAttribute('x1'));
+    await expect(maxX).toBeGreaterThan(highlightEndX);
+    fireEvent.pointerUp(layeredGraph, { pointerId: 4, clientX: bounds.left + bounds.width * (583 / 1389), buttons: 0 });
   },
 };

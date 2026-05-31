@@ -5,13 +5,14 @@ import { deriveBpmSessionPlan } from '../../domain/analysis/bpmTimeline';
 import { analyzeSessionRounds } from '../../domain/analysis/recovery';
 import { buildNormalisedCovTrendPoints } from '../../domain/trend/normalisedCov';
 import { isComparisonEligibleSession } from '../../domain/session/lifecycle';
-import type { Interval, Sample, SessionRecord, WorkoutPlan } from '../../domain/shared/types';
+import type { Sample, SessionRecord, WorkoutPlan } from '../../domain/shared/types';
 import { HeartGraph } from '../components/HeartGraph';
 import {
   Crosshairs,
   IntervalHighlight,
   LayeredHeartGraph,
   SessionHeartRateLine,
+  buildSessionIntervalAtX,
   formatCrosshairTimeLabel,
   getSessionSampleY,
   useLayeredHeartGraphPointerX,
@@ -76,38 +77,6 @@ function getNearestSample(session: SessionRecord, elapsedSec: number): Sample {
   return nearest;
 }
 
-function buildIntervalAtX(session: SessionRecord, x: number): Interval {
-  const elapsedSec = Math.round((session.plan.totalDurationSec * x) / 100);
-  const phase =
-    session.plan.phases.find((item) => elapsedSec >= item.startSec && elapsedSec < item.endSec) ??
-    session.plan.phases.at(-1);
-
-  if (!phase || phase.kind === 'countdown') {
-    throw new Error('Session must contain a highlightable interval');
-  }
-
-  const samples = getValidSamples(session).filter(
-    (sample) => sample.elapsedSec >= phase.startSec && sample.elapsedSec <= phase.endSec
-  );
-  const fallback = getNearestSample(session, phase.startSec);
-  const max = samples.reduce<Sample>(
-    (candidate, sample) => sample.bpm > candidate.bpm ? sample : candidate,
-    samples[0] ?? fallback
-  );
-  const min = samples.reduce<Sample>(
-    (candidate, sample) => sample.bpm < candidate.bpm ? sample : candidate,
-    samples[0] ?? fallback
-  );
-
-  return {
-    kind: phase.kind,
-    start: getNearestSample(session, phase.startSec),
-    end: getNearestSample(session, phase.endSec),
-    max,
-    min,
-  };
-}
-
 function buildDisplaySession(
   session: SessionRecord,
   plan: WorkoutPlan = deriveBpmSessionPlan(session)
@@ -146,7 +115,7 @@ function LayeredTrendHeartGraph({
   return (
     <LayeredHeartGraph heightClassName="h-56" {...pointerProps}>
       <SessionHeartRateLine session={displaySession} />
-      <IntervalHighlight interval={buildIntervalAtX(displaySession, x)} totalDurationSec={plan.totalDurationSec} />
+      <IntervalHighlight interval={buildSessionIntervalAtX(displaySession, x)} totalDurationSec={plan.totalDurationSec} />
       <Crosshairs
         x={x}
         y={getSessionSampleY(displaySession, sample)}
