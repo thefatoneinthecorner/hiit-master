@@ -248,9 +248,9 @@ export function useSessionReplay(
     let animationFrameId = 0;
     const advance = () => {
       if (scrubDirection === 1) {
-        advanceElapsed(5);
+        advanceElapsed(20);
       } else {
-        reverseElapsed(5);
+        reverseElapsed(20);
       }
       animationFrameId = window.requestAnimationFrame(advance);
     };

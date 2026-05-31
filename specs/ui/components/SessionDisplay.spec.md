@@ -10,7 +10,7 @@
 - `title`: Optional heading displayed at the top of the stack.
 - `roundName`, `countdownSeconds`, `remainingSeconds`, `bpm`, `pulseActive`, `pulseBeating`, and `pulseBeatKey`: Values rendered through `SessionDetails`.
 - `sensorName`, `batteryPercent`, `playing`, `onBluetooth`, `onPlay`, `onPause`, and `onStop`: Values passed to `SessionController`.
-- `samples`, `totalDurationSec`, `nominalPeakHeartrate`, and `scrubElapsedSec`: Values passed to `HeartGraph`.
+- `samples`, `totalDurationSec`, `nominalPeakHeartrate`, and `scrubElapsedSec`: Values passed to the embedded `LayeredHeartGraph`.
 - `recoveryRounds`, `roundDurationsSec`, `roundEndElapsedSec`, and `recoveryScaleMaxAbs`: Values passed to `RecoveryHistogram`.
 - `onScrubPointerMove`: Optional pointer movement handler used by replay stories to move shared chart scrubbers.
 - `sessionControllerVisible`: Initial disclosure state for the session controller row. Defaults to true.
@@ -27,14 +27,14 @@
 - The live pulse is centered in the time/pulse/BPM row.
 - The next row contains `SessionController` in a `CollapsiblePanel`.
 - The session controller row is initially visible unless `sessionControllerVisible` is false.
-- The rows below the sensor details are `HeartGraph` and `RecoveryHistogram`.
+- The rows below the sensor details are `LayeredHeartGraph` and `RecoveryHistogram`.
 - The `RecoveryHistogram` is suppressed when `settingsMode` is `bpm`.
 - When `settingsMode` is `bpm`, `SessionDisplay` does not pass a remaining title or remaining value to `SessionDetails`.
 - BPM-mode phase progression is owned by the application store; `SessionDisplay` only renders the supplied phase and timing values.
 - Live-session replay data must pass `scrubElapsedSec: null` so the history scrubber is not displayed.
-- The embedded `HeartGraph` uses duration-based x scaling so the heart-rate line keeps a stable session timeline while live samples arrive.
+- The embedded `LayeredHeartGraph` uses duration-based x scaling so the heart-rate line keeps a stable session timeline while live samples arrive.
 - The embedded `RecoveryHistogram` receives only recovery rounds that are visible at the current replay elapsed time, so it starts empty and fills as recoveries complete.
-- The embedded `RecoveryHistogram` uses full-session elapsed recovery endpoints so bars line up horizontally with the same timeline as `HeartGraph`.
+- The embedded `RecoveryHistogram` uses full-session elapsed recovery endpoints so bars line up horizontally with the same timeline as `LayeredHeartGraph`.
 - In replay, recovery histogram bar right edges align with the end of each round's rest phase. The final round aligns with the final recovery analysis endpoint, not the cooldown endpoint.
 - In replay, the recovery histogram vertical scale uses a high-water magnitude so it may grow as larger live values appear, but it must not shrink while replay advances.
 
@@ -63,7 +63,7 @@
 - Pressing Space toggles replay playback between paused and playing.
 - Holding the right arrow key fast-forwards the replay by advancing samples on animation frames until the key is released.
 - Holding the left arrow key rewinds the replay by moving samples backward on animation frames until the key is released.
-- Pressing `S` toggles a shared scrubber on both `HeartGraph` and `RecoveryHistogram`.
+- Pressing `S` toggles a shared scrubber on both `LayeredHeartGraph` and `RecoveryHistogram`.
 - When the shared scrubber is visible, moving the mouse over `SessionDisplay` maps the pointer x-coordinate to elapsed time and moves both scrubbers together.
 - These controls are required in Storybook for debugging and regression inspection, even if they are not exposed in the production active-session UI.
 

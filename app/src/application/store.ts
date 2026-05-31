@@ -1,6 +1,6 @@
 import { batch, computed, signal } from '@preact/signals';
 import { Capacitor } from '@capacitor/core';
-import { analyzeSessionRounds, getScrubPointData } from '../domain/analysis/recovery';
+import { analyzeSessionRounds } from '../domain/analysis/recovery';
 import {
   buildComparisonRounds,
   buildReplayRecoveryAnalysis,
@@ -85,7 +85,6 @@ const runtime = signal<SessionRuntime>({
 const profiles = signal<SessionProfile[]>([]);
 const sessions = signal<SessionRecord[]>([]);
 const selectedProfileId = signal<string>('');
-const historyIndex = signal(0);
 const trendIndex = signal(0);
 const initialized = signal(false);
 const activeRoute = signal('/');
@@ -298,15 +297,6 @@ const completedSessions = computed(() =>
   sessions.value
     .filter((session) => session.status === 'completed')
     .sort((left, right) => new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime())
-);
-const historySession = computed(() => completedSessions.value[historyIndex.value] ?? null);
-const historyComparison = computed(() =>
-  historySession.value
-    ? buildComparisonRounds(
-        historySession.value.analysis,
-        findPreviousComparableSession(historySession.value, sessions.value)?.analysis ?? null
-      )
-    : []
 );
 
 function syncActualWorkDuration(): void {
@@ -544,7 +534,6 @@ async function finishSession(status: 'completed' | 'ended_early'): Promise<void>
   };
 
   sessions.value = [record, ...sessions.value];
-  historyIndex.value = 0;
   await persistSnapshot();
 
   runtime.value = {
@@ -568,7 +557,6 @@ async function initialize(): Promise<void> {
     selectedProfileId.value = snapshot.settings.selectedProfileId || snapshot.profiles[0]?.id || '';
     settingsMode.value = snapshot.settings.settingsMode ?? 'duration';
     actualWorkDurationByProfileId.value = snapshot.settings.actualWorkDurationByProfileId ?? {};
-    historyIndex.value = 0;
     trendIndex.value = 0;
     initialized.value = true;
   });
@@ -579,13 +567,6 @@ async function initialize(): Promise<void> {
   if (settingsMode.value === 'bpm' && selectedProfileId.value) {
     ensureBpmTargetsForProfile(selectedProfileId.value);
   }
-}
-
-function getHistorySessionIndex(sessionId: string): number {
-  return Math.max(
-    0,
-    completedSessions.value.findIndex((session) => session.id === sessionId)
-  );
 }
 
 export const appStore = {
@@ -600,8 +581,6 @@ export const appStore = {
   currentPhase,
   comparisonRounds,
   completedSessions,
-  historySession,
-  historyComparison,
   trendIndex,
   shouldWarnNoComparableSession,
   profileDraft,
@@ -614,17 +593,8 @@ export const appStore = {
   isHomeSessionVisible: computed(() => !['idle', 'connecting_hr', 'ready'].includes(runtime.value.status)),
   canOpenDevices: computed(() => monitor.isConnected() || isSessionActive(runtime.value.status)),
   canOpenTrend: computed(() => !isSessionActive(runtime.value.status) && !isCountdownActive(runtime.value.status) && sessions.value.length > 0),
-  canOpenHistory: computed(() => !isSessionActive(runtime.value.status) && !isCountdownActive(runtime.value.status) && completedSessions.value.length > 0),
   canOpenSettings: computed(() => !isSessionActive(runtime.value.status) && !isCountdownActive(runtime.value.status)),
   homeComparison,
-  currentSessionScrub: computed(() => getScrubPointData(runtime.value.samples, runtime.value.scrubElapsedSec ?? runtime.value.elapsedSec)),
-  historyScrub: computed(() => {
-    const session = historySession.value;
-    if (!session) {
-      return { elapsedSec: 0, bpm: null };
-    }
-    return getScrubPointData(session.samples, runtime.value.scrubElapsedSec ?? session.plan.totalDurationSec);
-  }),
 
   async initialize() {
     await initialize();
@@ -779,31 +749,6 @@ export const appStore = {
 
   setTrendIndex(index: number) {
     trendIndex.value = Math.max(0, index);
-  },
-
-  openCompletedSessionInHistory(sessionId?: string) {
-    const selectedSessionId = sessionId ?? completedSessions.value[0]?.id;
-    if (!selectedSessionId) {
-      return;
-    }
-    historyIndex.value = getHistorySessionIndex(selectedSessionId);
-    activeRoute.value = '/history';
-    window.history.pushState({}, '', '/history');
-    window.dispatchEvent(new PopStateEvent('popstate'));
-  },
-
-  stepHistory(direction: -1 | 1) {
-    historyIndex.value = Math.max(0, Math.min(completedSessions.value.length - 1, historyIndex.value + direction));
-    runtime.value = {
-      ...runtime.value,
-      scrubElapsedSec: historySession.value?.plan.totalDurationSec ?? null
-    };
-  },
-
-  deleteHistorySession(sessionId: string) {
-    sessions.value = sessions.value.filter((session) => session.id !== sessionId);
-    historyIndex.value = Math.min(historyIndex.value, Math.max(0, completedSessions.value.length - 1));
-    void persistSnapshot();
   },
 
   beginEditingProfile(profileId: string) {

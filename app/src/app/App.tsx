@@ -4,7 +4,6 @@ import { appStore } from '../application/store';
 import { TabBar } from '../ui/components/TabBar';
 import { BPMSettingsScreen } from '../ui/screens/BPMSettingsScreen';
 import { DevicesScreen } from '../ui/screens/DevicesScreen';
-import { HistoryScreen } from '../ui/screens/HistoryScreen';
 import { HomeScreen } from '../ui/screens/HomeScreen';
 import { SettingsScreen } from '../ui/screens/SettingsScreen';
 import { TrendScreen } from '../ui/screens/TrendScreen';
@@ -21,9 +20,6 @@ function Shell() {
       appStore.beginEditingProfile(appStore.selectedProfile.value.id);
       appStore.setRoute(location.path);
       if (location.path === '/devices' && !appStore.canOpenDevices.value) {
-        location.route('/');
-      }
-      if (location.path === '/history' && !appStore.canOpenHistory.value) {
         location.route('/');
       }
       if (location.path === '/trend' && !appStore.canOpenTrend.value) {
@@ -54,7 +50,6 @@ function Shell() {
             <Route path="/" component={HomeScreen} />
             <Route path="/devices" component={DevicesScreen} />
             <Route path="/trend" component={TrendScreen} />
-            <Route path="/history" component={HistoryScreen} />
             <Route path="/settings" component={SettingsRoute} />
           </Router>
         </div>

@@ -8,7 +8,6 @@ Current feature files:
 
 - [`Home.feature`](/workspace/docs/acceptance/Home.feature)
 - [`Devices.feature`](/workspace/docs/acceptance/Devices.feature)
-- [`History.feature`](/workspace/docs/acceptance/History.feature)
 - [`Settings.feature`](/workspace/docs/acceptance/Settings.feature)
 - [`ComparisonRules.feature`](/workspace/docs/acceptance/ComparisonRules.feature)
 - [`SessionLifecycle.feature`](/workspace/docs/acceptance/SessionLifecycle.feature)

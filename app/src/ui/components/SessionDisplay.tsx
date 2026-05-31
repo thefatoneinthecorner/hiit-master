@@ -35,7 +35,6 @@ interface SessionDisplayProps {
   roundEndElapsedSec?: number[];
   recoveryScaleMaxAbs?: number;
   onScrubPointerMove?: (clientX: number, containerRect: DOMRect) => void;
-  onOpenHistory?: () => void;
   sessionControllerVisible?: boolean;
 }
 
@@ -67,7 +66,6 @@ export function SessionDisplay({
   roundEndElapsedSec,
   recoveryScaleMaxAbs,
   onScrubPointerMove,
-  onOpenHistory,
   sessionControllerVisible = true
 }: SessionDisplayProps) {
   const [sessionControllerOpen, setSessionControllerOpen] = useState(sessionControllerVisible);
@@ -118,7 +116,6 @@ export function SessionDisplay({
         totalDurationSec={totalDurationSec}
         nominalPeakHeartrate={nominalPeakHeartrate}
         scrubElapsedSec={scrubElapsedSec}
-        {...(onOpenHistory ? { onClick: onOpenHistory } : {})}
       />
       {settingsMode === 'duration' ? (
         <RecoveryHistogram
@@ -129,7 +126,6 @@ export function SessionDisplay({
           heightClassName="h-20"
           showEmptyState
           {...(recoveryScaleMaxAbs !== undefined ? { scaleMaxAbs: recoveryScaleMaxAbs } : {})}
-          {...(onOpenHistory ? { onClick: onOpenHistory } : {})}
         />
       ) : null}
     </section>
@@ -148,7 +144,6 @@ interface SessionDisplayLayeredHeartGraphProps {
   totalDurationSec: number;
   nominalPeakHeartrate: number;
   scrubElapsedSec?: number | null;
-  onClick?: () => void;
 }
 
 function getLayeredGraphRange(samples: HeartRateSample[], nominalPeakHeartrate: number) {
@@ -167,7 +162,6 @@ function SessionDisplayLayeredHeartGraph({
   totalDurationSec,
   nominalPeakHeartrate,
   scrubElapsedSec = null,
-  onClick,
 }: SessionDisplayLayeredHeartGraphProps) {
   const width = 100;
   const height = 42;
@@ -188,23 +182,7 @@ function SessionDisplayLayeredHeartGraph({
     : null;
 
   return (
-    <LayeredHeartGraph
-      heightClassName="h-40"
-      {...(onClick
-        ? {
-          onClick,
-          role: 'button',
-          tabIndex: 0,
-          'aria-label': 'Open layered heart graph details',
-          onKeyDown: (event: KeyboardEvent) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              onClick();
-            }
-          },
-        }
-        : {})}
-    >
+    <LayeredHeartGraph heightClassName="h-40">
       <SvgLayerPortal>
         <polyline
           data-testid="session-display-layered-heart-graph-line"

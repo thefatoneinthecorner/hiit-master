@@ -24,7 +24,6 @@ type HomeScreenArgs = {
   onStartSession: () => void;
   onTogglePauseResume: () => void;
   onStopSession: () => void;
-  onOpenCompletedSessionInHistory: () => void;
   onSetScrubElapsedSec: (value: number) => void;
 };
 
@@ -83,7 +82,6 @@ function renderHomeScreen(args: HomeScreenArgs) {
         onStartSession={args.onStartSession}
         onTogglePauseResume={args.onTogglePauseResume}
         onStopSession={args.onStopSession}
-        onOpenCompletedSessionInHistory={args.onOpenCompletedSessionInHistory}
         onSetScrubElapsedSec={args.onSetScrubElapsedSec}
       />
     </div>
@@ -117,7 +115,6 @@ const meta = {
     onStartSession: fn(),
     onTogglePauseResume: fn(),
     onStopSession: fn(),
-    onOpenCompletedSessionInHistory: fn(),
     onSetScrubElapsedSec: fn(),
   },
   argTypes: {
@@ -265,14 +262,11 @@ export const Completed: Story = {
     },
     phase: getPhaseAtElapsedSec(plan, plan.totalDurationSec),
   },
-  play: async ({ args, canvas }) => {
+  play: async ({ canvas }) => {
     await expect(canvas.queryByText('Completed Session')).not.toBeInTheDocument();
     await expect(canvas.getByText('Cooldown')).toBeVisible();
     await expect(canvas.getByText('118')).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Show session controller' })).toHaveAttribute('aria-expanded', 'false');
     await expect(canvas.getByRole('slider')).toBeVisible();
-    await userEvent.click(canvas.getAllByRole('button', { name: 'Open recovery comparison details' })[0]);
-
-    await expect(args.onOpenCompletedSessionInHistory).toHaveBeenCalledTimes(1);
   },
 };

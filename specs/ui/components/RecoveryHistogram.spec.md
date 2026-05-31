@@ -12,7 +12,7 @@
 - `timelineDurationSec`: Optional full-session duration used as the x-axis denominator.
 - `scrubElapsedSec`: Optional elapsed second used to draw a vertical scrub marker.
 - `selectedRoundIndex`: Optional round index to label above the selected bar.
-- `onClick`: Optional activation handler for opening related session history.
+- `onClick`: Optional activation handler for opening related recovery details.
 - `clickLabel`: Accessible label for the interactive histogram when `onClick` is supplied.
 - `heightClassName`: Optional height utility for screen-specific sizing.
 - `showEmptyState`: When true and no previous comparable data exists, hides round bars.

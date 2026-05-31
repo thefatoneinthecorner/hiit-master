@@ -140,7 +140,6 @@ interface HomeScreenViewProps {
   onStartSession: () => void;
   onTogglePauseResume: () => void;
   onStopSession: () => void;
-  onOpenCompletedSessionInHistory: () => void;
   onSetScrubElapsedSec: (value: number) => void;
 }
 
@@ -161,7 +160,6 @@ export function HomeScreenView({
   onStartSession,
   onTogglePauseResume,
   onStopSession,
-  onOpenCompletedSessionInHistory,
   onSetScrubElapsedSec
 }: HomeScreenViewProps) {
   const phaseRemaining =
@@ -278,7 +276,6 @@ export function HomeScreenView({
           roundDurationsSec={plan.rounds.map((round) => round.nominalRoundDurationSec)}
           roundEndElapsedSec={getRoundEndElapsedSec(plan)}
           sessionControllerVisible={false}
-          {...(runtime.status === 'completed' ? { onOpenHistory: onOpenCompletedSessionInHistory } : {})}
         />
         {runtime.status === 'completed' ? (
           <input
@@ -354,7 +351,6 @@ export function HomeScreen() {
       onStartSession={() => appStore.startSession()}
       onTogglePauseResume={() => appStore.togglePauseResume()}
       onStopSession={() => appStore.stopSessionAndDisconnect()}
-      onOpenCompletedSessionInHistory={() => appStore.openCompletedSessionInHistory()}
       onSetScrubElapsedSec={(value) => appStore.setScrubElapsedSec(value)}
     />
   );
